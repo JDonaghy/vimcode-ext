@@ -1,0 +1,21 @@
+name = "csharp"
+display_name = "C# Language Support"
+description = "LSP, debugger, and tooling for C# (.NET)"
+version = "1.0.0"
+file_extensions = [".cs", ".csproj", ".sln"]
+language_ids = ["csharp"]
+workspace_markers = ["*.csproj", "*.sln"]
+
+[lsp]
+binary = "csharp-ls"
+install = "dotnet tool install -g csharp-ls"
+args = []
+
+[dap]
+adapter = "netcoredbg"
+binary = "netcoredbg"
+install = ""
+transport = "stdio"
+args = ["--interpreter=vscode"]
+
+scripts = []

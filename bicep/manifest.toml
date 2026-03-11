@@ -1,0 +1,15 @@
+name = "bicep"
+display_name = "Bicep Language Support"
+description = "LSP for Azure Bicep infrastructure-as-code files"
+version = "1.0.0"
+file_extensions = [".bicep", ".bicepparam"]
+language_ids = ["bicep"]
+workspace_markers = ["bicepconfig.json", "main.bicep"]
+
+[lsp]
+binary = "bicep-langserver"
+install = "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip"
+fallback_binaries = []
+args = ["--stdio"]
+
+scripts = []

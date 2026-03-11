@@ -1,0 +1,14 @@
+name = "php"
+display_name = "PHP Language Support"
+description = "LSP for PHP"
+version = "1.0.0"
+file_extensions = [".php"]
+language_ids = ["php"]
+workspace_markers = ["composer.json"]
+
+[lsp]
+binary = "intelephense"
+install = "npm install -g intelephense"
+args = []
+
+scripts = []

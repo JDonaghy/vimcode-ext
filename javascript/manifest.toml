@@ -1,0 +1,21 @@
+name = "javascript"
+display_name = "JavaScript / TypeScript Support"
+description = "LSP for JavaScript and TypeScript"
+version = "1.0.0"
+file_extensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
+language_ids = ["javascript", "typescript", "javascriptreact", "typescriptreact"]
+workspace_markers = ["package.json", "tsconfig.json"]
+
+[lsp]
+binary = "typescript-language-server"
+install = "npm install -g typescript typescript-language-server"
+args = ["--stdio"]
+
+[dap]
+adapter = "js-debug"
+binary = "node"
+install = ""
+transport = "stdio"
+args = []
+
+scripts = []

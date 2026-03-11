@@ -1,0 +1,21 @@
+name = "go"
+display_name = "Go Language Support"
+description = "LSP and debugger for Go"
+version = "1.0.0"
+file_extensions = [".go"]
+language_ids = ["go"]
+workspace_markers = ["go.mod", "go.sum"]
+
+[lsp]
+binary = "gopls"
+install = "go install golang.org/x/tools/gopls@latest"
+args = []
+
+[dap]
+adapter = "delve"
+binary = "dlv"
+install = "go install github.com/go-delve/delve/cmd/dlv@latest"
+transport = "stdio"
+args = ["dap"]
+
+scripts = []

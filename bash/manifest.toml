@@ -1,0 +1,13 @@
+name = "bash"
+display_name = "Bash / Shell Support"
+description = "LSP for Bash and shell scripts"
+version = "1.0.0"
+file_extensions = [".sh", ".bash", ".zsh", ".fish"]
+language_ids = ["shellscript", "bash"]
+
+[lsp]
+binary = "bash-language-server"
+install = "npm install -g bash-language-server"
+args = ["start"]
+
+scripts = []

@@ -1,0 +1,393 @@
+[
+  {
+    "name": "bash",
+    "display_name": "Bash / Shell Support",
+    "description": "LSP for Bash and shell scripts",
+    "version": "1.0.0",
+    "file_extensions": [".sh", ".bash", ".zsh", ".fish"],
+    "language_ids": ["shellscript", "bash"],
+    "lsp": {
+      "binary": "bash-language-server",
+      "install": "npm install -g bash-language-server",
+      "fallback_binaries": [],
+      "args": ["start"]
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": []
+  },
+  {
+    "name": "bicep",
+    "display_name": "Bicep Language Support",
+    "description": "LSP for Azure Bicep infrastructure-as-code files",
+    "version": "1.0.0",
+    "file_extensions": [".bicep", ".bicepparam"],
+    "language_ids": ["bicep"],
+    "lsp": {
+      "binary": "bicep-langserver",
+      "install": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
+      "fallback_binaries": [],
+      "args": ["--stdio"]
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["bicepconfig.json", "main.bicep"]
+  },
+  {
+    "name": "cpp",
+    "display_name": "C / C++ Language Support",
+    "description": "LSP and debugger for C and C++",
+    "version": "1.0.0",
+    "file_extensions": [".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"],
+    "language_ids": ["c", "cpp"],
+    "lsp": {
+      "binary": "clangd",
+      "install": "sudo apt-get install -y clangd",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "codelldb",
+      "binary": "codelldb",
+      "install": "",
+      "transport": "tcp",
+      "args": ["--port", "0"]
+    },
+    "scripts": [],
+    "workspace_markers": ["CMakeLists.txt", "Makefile", "compile_commands.json"]
+  },
+  {
+    "name": "csharp",
+    "display_name": "C# Language Support",
+    "description": "LSP, debugger, and tooling for C# (.NET)",
+    "version": "1.0.0",
+    "file_extensions": [".cs", ".csproj", ".sln"],
+    "language_ids": ["csharp"],
+    "lsp": {
+      "binary": "csharp-ls",
+      "install": "dotnet tool install -g csharp-ls",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "netcoredbg",
+      "binary": "netcoredbg",
+      "install": "",
+      "transport": "stdio",
+      "args": ["--interpreter=vscode"]
+    },
+    "scripts": [],
+    "workspace_markers": ["*.csproj", "*.sln"]
+  },
+  {
+    "name": "git-insights",
+    "display_name": "Git Insights",
+    "description": "Inline git blame, file/line history, commit show, diff, stash management",
+    "version": "2.0.0",
+    "file_extensions": [],
+    "language_ids": [],
+    "lsp": {
+      "binary": "",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": ["blame.lua", "history.lua", "show.lua", "line_history.lua", "diff.lua", "stash.lua", "repo_log.lua", "git_log_panel.lua"],
+    "workspace_markers": []
+  },
+  {
+    "name": "go",
+    "display_name": "Go Language Support",
+    "description": "LSP and debugger for Go",
+    "version": "1.0.0",
+    "file_extensions": [".go"],
+    "language_ids": ["go"],
+    "lsp": {
+      "binary": "gopls",
+      "install": "go install golang.org/x/tools/gopls@latest",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "delve",
+      "binary": "dlv",
+      "install": "go install github.com/go-delve/delve/cmd/dlv@latest",
+      "transport": "stdio",
+      "args": ["dap"]
+    },
+    "scripts": [],
+    "workspace_markers": ["go.mod", "go.sum"]
+  },
+  {
+    "name": "java",
+    "display_name": "Java Language Support",
+    "description": "LSP for Java (manual jdtls install required)",
+    "version": "1.0.0",
+    "file_extensions": [".java"],
+    "language_ids": ["java"],
+    "lsp": {
+      "binary": "jdtls",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "java-debug",
+      "binary": "java-debug-adapter",
+      "install": "",
+      "transport": "stdio",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["pom.xml", "build.gradle", "build.gradle.kts"]
+  },
+  {
+    "name": "javascript",
+    "display_name": "JavaScript / TypeScript Support",
+    "description": "LSP for JavaScript and TypeScript",
+    "version": "1.0.0",
+    "file_extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+    "language_ids": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
+    "lsp": {
+      "binary": "typescript-language-server",
+      "install": "npm install -g typescript typescript-language-server",
+      "fallback_binaries": [],
+      "args": ["--stdio"]
+    },
+    "dap": {
+      "adapter": "js-debug",
+      "binary": "node",
+      "install": "",
+      "transport": "stdio",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["package.json", "tsconfig.json"]
+  },
+  {
+    "name": "json",
+    "display_name": "JSON Language Support",
+    "description": "LSP formatting and validation for JSON",
+    "version": "1.0.0",
+    "file_extensions": [".json", ".jsonc", ".json5"],
+    "language_ids": ["json", "jsonc"],
+    "lsp": {
+      "binary": "vscode-json-languageserver",
+      "install": "npm install -g vscode-langservers-extracted",
+      "fallback_binaries": ["vscode-json-language-server"],
+      "args": ["--stdio"]
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["package.json", "tsconfig.json"]
+  },
+  {
+    "name": "markdown",
+    "display_name": "Markdown Language Support",
+    "description": "LSP navigation and completions for Markdown",
+    "version": "1.0.0",
+    "file_extensions": [".md", ".markdown", ".mdx"],
+    "language_ids": ["markdown"],
+    "lsp": {
+      "binary": "marksman",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["README.md"]
+  },
+  {
+    "name": "php",
+    "display_name": "PHP Language Support",
+    "description": "LSP for PHP",
+    "version": "1.0.0",
+    "file_extensions": [".php"],
+    "language_ids": ["php"],
+    "lsp": {
+      "binary": "intelephense",
+      "install": "npm install -g intelephense",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["composer.json"]
+  },
+  {
+    "name": "python",
+    "display_name": "Python Language Support",
+    "description": "LSP and debugger for Python",
+    "version": "1.0.0",
+    "file_extensions": [".py", ".pyi", ".pyw"],
+    "language_ids": ["python"],
+    "lsp": {
+      "binary": "pyright-langserver",
+      "install": "npm install -g pyright",
+      "fallback_binaries": ["basedpyright-langserver", "pylsp", "jedi-language-server"],
+      "args": ["--stdio"]
+    },
+    "dap": {
+      "adapter": "debugpy",
+      "binary": "python",
+      "install": "",
+      "transport": "stdio",
+      "args": ["-m", "debugpy.adapter"]
+    },
+    "scripts": [],
+    "workspace_markers": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"]
+  },
+  {
+    "name": "ruby",
+    "display_name": "Ruby Language Support",
+    "description": "LSP for Ruby",
+    "version": "1.0.0",
+    "file_extensions": [".rb", ".rake", ".gemspec"],
+    "language_ids": ["ruby"],
+    "lsp": {
+      "binary": "ruby-lsp",
+      "install": "gem install ruby-lsp",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["Gemfile", "Gemfile.lock"]
+  },
+  {
+    "name": "rust",
+    "display_name": "Rust Language Support",
+    "description": "LSP and debugger for Rust",
+    "version": "1.0.0",
+    "file_extensions": [".rs"],
+    "language_ids": ["rust"],
+    "lsp": {
+      "binary": "rust-analyzer",
+      "install": "cargo install rust-analyzer",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "codelldb",
+      "binary": "codelldb",
+      "install": "",
+      "transport": "tcp",
+      "args": ["--port", "0"]
+    },
+    "scripts": [],
+    "workspace_markers": ["Cargo.toml"]
+  },
+  {
+    "name": "terraform",
+    "display_name": "Terraform Language Support",
+    "description": "LSP for HashiCorp Terraform and OpenTofu",
+    "version": "1.0.0",
+    "file_extensions": [".tf", ".tfvars", ".hcl"],
+    "language_ids": ["terraform", "terraform-vars"],
+    "lsp": {
+      "binary": "terraform-ls",
+      "install": "",
+      "fallback_binaries": ["terraform-lsp"],
+      "args": ["serve"]
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["main.tf", ".terraform", ".terraform.lock.hcl"]
+  },
+  {
+    "name": "xml",
+    "display_name": "XML Language Support",
+    "description": "LSP formatting and validation for XML",
+    "version": "1.0.0",
+    "file_extensions": [".xml", ".xsd", ".xsl", ".xslt", ".svg", ".pom"],
+    "language_ids": ["xml", "xsl"],
+    "lsp": {
+      "binary": "lemminx",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": ["pom.xml"]
+  },
+  {
+    "name": "yaml",
+    "display_name": "YAML Language Support",
+    "description": "LSP formatting and validation for YAML",
+    "version": "1.0.0",
+    "file_extensions": [".yml", ".yaml"],
+    "language_ids": ["yaml"],
+    "lsp": {
+      "binary": "yaml-language-server",
+      "install": "npm install -g yaml-language-server",
+      "fallback_binaries": [],
+      "args": ["--stdio"]
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": [],
+    "workspace_markers": [".github", "docker-compose.yml", "docker-compose.yaml"]
+  }
+]

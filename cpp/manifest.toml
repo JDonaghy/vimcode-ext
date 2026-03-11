@@ -1,0 +1,21 @@
+name = "cpp"
+display_name = "C / C++ Language Support"
+description = "LSP and debugger for C and C++"
+version = "1.0.0"
+file_extensions = [".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"]
+language_ids = ["c", "cpp"]
+workspace_markers = ["CMakeLists.txt", "Makefile", "compile_commands.json"]
+
+[lsp]
+binary = "clangd"
+install = "sudo apt-get install -y clangd"
+args = []
+
+[dap]
+adapter = "codelldb"
+binary = "codelldb"
+install = ""
+transport = "tcp"
+args = ["--port", "0"]
+
+scripts = []

@@ -1,0 +1,15 @@
+name = "json"
+display_name = "JSON Language Support"
+description = "LSP formatting and validation for JSON"
+version = "1.0.0"
+file_extensions = [".json", ".jsonc", ".json5"]
+language_ids = ["json", "jsonc"]
+workspace_markers = ["package.json", "tsconfig.json"]
+
+[lsp]
+binary = "vscode-json-languageserver"
+install = "npm install -g vscode-langservers-extracted"
+fallback_binaries = ["vscode-json-language-server"]
+args = ["--stdio"]
+
+scripts = []

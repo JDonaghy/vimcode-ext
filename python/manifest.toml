@@ -1,0 +1,22 @@
+name = "python"
+display_name = "Python Language Support"
+description = "LSP and debugger for Python"
+version = "1.0.0"
+file_extensions = [".py", ".pyi", ".pyw"]
+language_ids = ["python"]
+workspace_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"]
+
+[lsp]
+binary = "pyright-langserver"
+install = "npm install -g pyright"
+fallback_binaries = ["basedpyright-langserver", "pylsp", "jedi-language-server"]
+args = ["--stdio"]
+
+[dap]
+adapter = "debugpy"
+binary = "python"
+install = ""
+transport = "stdio"
+args = ["-m", "debugpy.adapter"]
+
+scripts = []

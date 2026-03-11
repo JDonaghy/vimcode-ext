@@ -1,0 +1,14 @@
+name = "ruby"
+display_name = "Ruby Language Support"
+description = "LSP for Ruby"
+version = "1.0.0"
+file_extensions = [".rb", ".rake", ".gemspec"]
+language_ids = ["ruby"]
+workspace_markers = ["Gemfile", "Gemfile.lock"]
+
+[lsp]
+binary = "ruby-lsp"
+install = "gem install ruby-lsp"
+args = []
+
+scripts = []

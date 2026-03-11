@@ -1,0 +1,21 @@
+name = "rust"
+display_name = "Rust Language Support"
+description = "LSP and debugger for Rust"
+version = "1.0.0"
+file_extensions = [".rs"]
+language_ids = ["rust"]
+workspace_markers = ["Cargo.toml"]
+
+[lsp]
+binary = "rust-analyzer"
+install = "cargo install rust-analyzer"
+args = []
+
+[dap]
+adapter = "codelldb"
+binary = "codelldb"
+install = ""
+transport = "tcp"
+args = ["--port", "0"]
+
+scripts = []

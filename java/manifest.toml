@@ -1,0 +1,21 @@
+name = "java"
+display_name = "Java Language Support"
+description = "LSP for Java (manual jdtls install required)"
+version = "1.0.0"
+file_extensions = [".java"]
+language_ids = ["java"]
+workspace_markers = ["pom.xml", "build.gradle", "build.gradle.kts"]
+
+[lsp]
+binary = "jdtls"
+install = ""
+args = []
+
+[dap]
+adapter = "java-debug"
+binary = "java-debug-adapter"
+install = ""
+transport = "stdio"
+args = []
+
+scripts = []

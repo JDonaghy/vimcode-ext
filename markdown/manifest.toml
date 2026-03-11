@@ -1,0 +1,15 @@
+name = "markdown"
+display_name = "Markdown Language Support"
+description = "LSP navigation and completions for Markdown"
+version = "1.0.0"
+file_extensions = [".md", ".markdown", ".mdx"]
+language_ids = ["markdown"]
+workspace_markers = ["README.md"]
+
+[lsp]
+binary = "marksman"
+install = ""
+fallback_binaries = []
+args = []
+
+scripts = []
