@@ -37,7 +37,7 @@ local function latex_compile()
   end
   vimcode.message("Compiling " .. tex .. " ...")
   local cmd = string.format(
-    "latexmk -pdf -interaction=nonstopmode -file-line-error %q 2>&1",
+    "latexmk -cd -pdf -interaction=nonstopmode -file-line-error %q 2>&1",
     tex
   )
   vimcode.async_shell(cmd, "latex_compile_done")
@@ -92,7 +92,7 @@ local function latex_clean(full)
     return
   end
   local flag = full and "-C" or "-c"
-  local cmd = string.format("latexmk %s %q 2>&1", flag, tex)
+  local cmd = string.format("latexmk -cd %s %q 2>&1", flag, tex)
   vimcode.async_shell(cmd, "latex_clean_done")
   vimcode.message("Cleaning auxiliary files...")
 end
