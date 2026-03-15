@@ -184,6 +184,29 @@
     "workspace_markers": ["package.json", "tsconfig.json"]
   },
   {
+    "name": "latex",
+    "display_name": "LaTeX Language Support",
+    "description": "LSP (texlab), build tools, PDF viewing, and document navigation for LaTeX",
+    "version": "1.0.0",
+    "file_extensions": [".tex", ".bib", ".cls", ".sty", ".dtx", ".ltx"],
+    "language_ids": ["latex", "bibtex"],
+    "lsp": {
+      "binary": "texlab",
+      "install": "cargo install --git https://github.com/latex-lsp/texlab",
+      "fallback_binaries": ["digestif"],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": ["latex.lua"],
+    "workspace_markers": [".latexmkrc", "latexmkrc", "main.tex"]
+  },
+  {
     "name": "json",
     "display_name": "JSON Language Support",
     "description": "LSP formatting and validation for JSON",
