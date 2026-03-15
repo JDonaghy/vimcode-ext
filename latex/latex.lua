@@ -73,10 +73,17 @@ local function latex_view()
   -- e.g. "evince", "zathura", "okular", "open" (macOS)
   local viewer = vimcode.opt.get("latex_pdf_viewer")
   if not viewer or viewer == "" then
-    viewer = "evince"
+    -- Platform-appropriate default: xdg-open (Linux), open (macOS), start (Windows)
+    local uname = io.popen("uname -s 2>/dev/null"):read("*l") or ""
+    if uname:match("Darwin") then
+      viewer = "open"
+    else
+      viewer = "xdg-open"
+    end
   end
-  -- Use setsid to fully detach the viewer process from the terminal
-  local cmd = string.format("setsid %s %q >/dev/null 2>&1 &", viewer, pdf)
+  -- Use setsid to fully detach the viewer process from the terminal (Linux only)
+  local detach = (viewer ~= "open") and "setsid " or ""
+  local cmd = string.format("%s%s %q >/dev/null 2>&1 &", detach, viewer, pdf)
   vimcode.async_shell(cmd, "latex_view_done")
   vimcode.message("Opening " .. pdf .. " with " .. viewer)
 end
