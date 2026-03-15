@@ -67,14 +67,16 @@ local function latex_view()
     return
   end
   local pdf = pdf_path(tex)
-  -- Detect viewer: prefer xdg-open on Linux, open on macOS
-  local viewer = "xdg-open"
-  if package.config:sub(1,1) ~= "/" then
-    viewer = "start" -- Windows fallback
+  -- Configurable viewer: set latex_pdf_viewer in settings.json
+  -- e.g. "evince", "zathura", "okular", "open" (macOS)
+  local viewer = vimcode.opt.get("latex_pdf_viewer")
+  if not viewer or viewer == "" then
+    viewer = "evince"
   end
-  local cmd = string.format("%s %q 2>/dev/null &", viewer, pdf)
+  -- Use setsid to fully detach the viewer process from the terminal
+  local cmd = string.format("setsid %s %q >/dev/null 2>&1 &", viewer, pdf)
   vimcode.async_shell(cmd, "latex_view_done")
-  vimcode.message("Opening " .. pdf)
+  vimcode.message("Opening " .. pdf .. " with " .. viewer)
 end
 
 vimcode.on("latex_view_done", function(_) end)
