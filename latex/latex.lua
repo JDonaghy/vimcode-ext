@@ -47,6 +47,8 @@ vimcode.on("latex_compile_done", function(output)
   if output:match("Latexmk: All targets.*are up to date")
       or output:match("Output written on") then
     vimcode.message("LaTeX: Build succeeded")
+  elseif output == "" or output:match("not found") or output:match("No such file") then
+    vimcode.message("latexmk not found — install with: sudo apt install latexmk texlive-latex-base")
   else
     -- Try to extract the first error line
     local err = output:match("[^\n]*:[%d]+:[^\n]*")
