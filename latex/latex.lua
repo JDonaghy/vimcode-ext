@@ -36,9 +36,17 @@ local function latex_compile()
     return
   end
   vimcode.message("Compiling " .. tex .. " ...")
+  -- Use configured build engine (pdflatex/xelatex/lualatex)
+  local engine = vimcode.opt.get("latex.build_engine")
+  local engine_flag = ""
+  if engine == "xelatex" then
+    engine_flag = "-xelatex"
+  elseif engine == "lualatex" then
+    engine_flag = "-lualatex"
+  end
   local cmd = string.format(
-    "latexmk -cd -pdf -interaction=nonstopmode -file-line-error %q 2>&1",
-    tex
+    "latexmk -cd %s -pdf -interaction=nonstopmode -file-line-error %q 2>&1",
+    engine_flag, tex
   )
   vimcode.async_shell(cmd, "latex_compile_done")
 end
@@ -69,9 +77,8 @@ local function latex_view()
     return
   end
   local pdf = pdf_path(tex)
-  -- Configurable viewer: set latex_pdf_viewer in settings.json
-  -- e.g. "evince", "zathura", "okular", "open" (macOS)
-  local viewer = vimcode.opt.get("latex_pdf_viewer")
+  -- Configurable via Settings sidebar → LaTeX Language Support → PDF Viewer
+  local viewer = vimcode.opt.get("latex.pdf_viewer")
   if not viewer or viewer == "" then
     -- Platform-appropriate default: xdg-open (Linux), open (macOS), start (Windows)
     local uname = io.popen("uname -s 2>/dev/null"):read("*l") or ""
@@ -160,9 +167,13 @@ local function refresh_toc()
   vimcode.panel.set_items("latex-toc", "Sections", items)
 end
 
--- Refresh TOC on save and on panel focus
+-- Refresh TOC on save; auto-compile if build_on_save is enabled
 vimcode.on("save", function(_)
   refresh_toc()
+  local auto = vimcode.opt.get("latex.build_on_save")
+  if auto == "true" then
+    latex_compile()
+  end
 end)
 
 vimcode.on("panel_focus", function(arg)

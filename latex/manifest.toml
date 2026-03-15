@@ -17,3 +17,25 @@ args = []
 
 [comment]
 line = "%"
+
+[[settings]]
+key = "pdf_viewer"
+label = "PDF Viewer"
+description = "Command used to open compiled PDFs (empty = system default)"
+type = "string"
+default = ""
+
+[[settings]]
+key = "build_on_save"
+label = "Build on Save"
+description = "Automatically compile when saving .tex files"
+type = "bool"
+default = "false"
+
+[[settings]]
+key = "build_engine"
+label = "Build Engine"
+description = "LaTeX compilation engine"
+type = "enum"
+options = ["pdflatex", "xelatex", "lualatex"]
+default = "pdflatex"
