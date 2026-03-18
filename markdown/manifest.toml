@@ -1,6 +1,6 @@
 name = "markdown"
 display_name = "Markdown Language Support"
-description = "LSP navigation and completions for Markdown"
+description = "LSP navigation and completions for Markdown via marksman"
 version = "1.0.0"
 file_extensions = [".md", ".markdown", ".mdx"]
 language_ids = ["markdown"]
@@ -9,6 +9,9 @@ workspace_markers = ["README.md"]
 [lsp]
 binary = "marksman"
 install = ""
+install_linux = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/artempyanykh/marksman/releases/latest | grep browser_download_url | grep marksman-linux-x64 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/marksman && chmod +x ~/.local/bin/marksman"
+install_macos = "brew install marksman"
+install_windows = ""
 fallback_binaries = []
 args = []
 

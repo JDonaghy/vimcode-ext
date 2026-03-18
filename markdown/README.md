@@ -1,18 +1,18 @@
 # Markdown Language Support
 
-Language support for Markdown — document navigation and completions.
-
-**LSP**: `marksman`
-**File types**: `.md`, `.markdown`, `.mdx`
-
-## Prerequisites
-
-- **marksman** must be installed manually and placed on PATH. Download from the marksman releases page.
-
-Note: marksman cannot be auto-installed — download the binary for your platform.
+Provides LSP intelligence for Markdown files via [marksman](https://github.com/artempyanykh/marksman).
 
 ## Features
 
-- Document link navigation (go-to-definition on links)
-- Heading completion and cross-file references
-- Diagnostics for broken links
+- Document link navigation (headings, wiki-links, cross-file references)
+- Completions for headings, links, and file paths
+- Go-to-definition for internal links
+- Document symbols / outline
+
+## Installation
+
+**Linux:** Downloads the latest release binary from GitHub into `~/.local/bin/`.
+
+**macOS:** Installs via Homebrew (`brew install marksman`).
+
+**Windows:** Manual install required — download from [GitHub releases](https://github.com/artempyanykh/marksman/releases) and add to PATH.
