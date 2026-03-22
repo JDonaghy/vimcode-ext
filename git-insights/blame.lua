@@ -79,14 +79,10 @@ local function build_hover(state, diff_output)
     end
   end
 
-  -- Action links — labels are clickable, keybind hints only in vim mode
+  -- Action links — labels are clickable, command URI shown as (:Name?args)
   local actions = {}
-  local is_vim = vimcode.opt.get("editor_mode") ~= "vscode"
-  local open_link = "[Open Commit](command:GitShow?" .. state.short_hash .. ")"
-  if is_vim then open_link = open_link .. " (:Gshow)" end
-  table.insert(actions, open_link)
-  local copy_link = "[Copy Hash](command:GitCopyHash?" .. state.short_hash .. ")"
-  table.insert(actions, copy_link)
+  table.insert(actions, "[Open Commit](command:GitShow?" .. state.short_hash .. ")")
+  table.insert(actions, "[Copy Hash](command:GitCopyHash?" .. state.short_hash .. ")")
   md = md .. "\n\n---\n\n" .. table.concat(actions, " &nbsp;|&nbsp; ")
   md = md .. "\n\n" .. hash_link
   return md
