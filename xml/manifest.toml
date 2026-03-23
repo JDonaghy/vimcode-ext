@@ -9,6 +9,9 @@ workspace_markers = ["pom.xml"]
 [lsp]
 binary = "lemminx"
 install = ""
+install_linux = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep linux-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx"
+install_macos = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep osx-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx"
+install_windows = ""
 fallback_binaries = []
 args = []
 

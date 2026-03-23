@@ -8,7 +8,10 @@ workspace_markers = ["CMakeLists.txt", "Makefile", "compile_commands.json"]
 
 [lsp]
 binary = "clangd"
-install = "sudo apt-get install -y clangd"
+install = ""
+install_linux = "sudo apt-get install -y clangd"
+install_macos = "brew install llvm"
+install_windows = ""
 args = []
 
 [dap]

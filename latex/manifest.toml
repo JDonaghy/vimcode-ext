@@ -12,6 +12,7 @@ binary = "texlab"
 install = "cargo install --git https://github.com/latex-lsp/texlab"
 install_linux = "cargo install --git https://github.com/latex-lsp/texlab"
 install_macos = "brew install texlab"
+install_windows = ""
 fallback_binaries = ["digestif"]
 args = []
 

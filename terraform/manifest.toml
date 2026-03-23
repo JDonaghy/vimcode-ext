@@ -9,6 +9,9 @@ workspace_markers = ["main.tf", ".terraform", ".terraform.lock.hcl"]
 [lsp]
 binary = "terraform-ls"
 install = ""
+install_linux = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/hashicorp/terraform-ls/releases/latest | grep browser_download_url | grep linux_amd64.zip | head -1 | cut -d'\"' -f4)\" -o /tmp/terraform-ls.zip && unzip -o /tmp/terraform-ls.zip terraform-ls -d ~/.local/bin && chmod +x ~/.local/bin/terraform-ls && rm /tmp/terraform-ls.zip"
+install_macos = "brew install hashicorp/tap/terraform-ls"
+install_windows = ""
 fallback_binaries = ["terraform-lsp"]
 args = ["serve"]
 

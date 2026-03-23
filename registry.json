@@ -31,7 +31,10 @@
     "language_ids": ["bicep"],
     "lsp": {
       "binary": "bicep-langserver",
-      "install": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
+      "install": "",
+      "install_linux": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
+      "install_macos": "brew install bicep && mkdir -p ~/.local/bin && ln -sf $(brew --prefix)/bin/bicep-langserver ~/.local/bin/bicep-langserver",
+      "install_windows": "",
       "fallback_binaries": [],
       "args": ["--stdio"]
     },
@@ -54,7 +57,10 @@
     "language_ids": ["c", "cpp"],
     "lsp": {
       "binary": "clangd",
-      "install": "sudo apt-get install -y clangd",
+      "install": "",
+      "install_linux": "sudo apt-get install -y clangd",
+      "install_macos": "brew install llvm",
+      "install_windows": "",
       "fallback_binaries": [],
       "args": []
     },
@@ -193,6 +199,9 @@
     "lsp": {
       "binary": "texlab",
       "install": "cargo install --git https://github.com/latex-lsp/texlab",
+      "install_linux": "cargo install --git https://github.com/latex-lsp/texlab",
+      "install_macos": "brew install texlab",
+      "install_windows": "",
       "fallback_binaries": ["digestif"],
       "args": []
     },
@@ -412,6 +421,9 @@
     "lsp": {
       "binary": "terraform-ls",
       "install": "",
+      "install_linux": "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/hashicorp/terraform-ls/releases/latest | grep browser_download_url | grep linux_amd64.zip | head -1 | cut -d'\"' -f4)\" -o /tmp/terraform-ls.zip && unzip -o /tmp/terraform-ls.zip terraform-ls -d ~/.local/bin && chmod +x ~/.local/bin/terraform-ls && rm /tmp/terraform-ls.zip",
+      "install_macos": "brew install hashicorp/tap/terraform-ls",
+      "install_windows": "",
       "fallback_binaries": ["terraform-lsp"],
       "args": ["serve"]
     },
@@ -435,6 +447,9 @@
     "lsp": {
       "binary": "lemminx",
       "install": "",
+      "install_linux": "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep linux-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx",
+      "install_macos": "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep osx-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx",
+      "install_windows": "",
       "fallback_binaries": [],
       "args": []
     },

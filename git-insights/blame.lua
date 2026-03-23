@@ -176,9 +176,7 @@ vimcode.on("blame_diff_result", function(output)
 end)
 
 -- Command URI handlers for hover popup action links
-vimcode.command("GitShow", function(hash)
-  vimcode.command_run("Gshow " .. hash)
-end)
+-- Note: GitShow is defined in show.lua (loads after blame.lua alphabetically)
 
 vimcode.command("GitCopyHash", function(hash)
   vimcode.state.set_register("+", hash, false)
