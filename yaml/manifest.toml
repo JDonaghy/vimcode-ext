@@ -11,5 +11,6 @@ binary = "yaml-language-server"
 install = "npm install -g yaml-language-server"
 fallback_binaries = []
 args = ["--stdio"]
+dependencies = ["npm"]
 
 scripts = []

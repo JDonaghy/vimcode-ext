@@ -10,7 +10,8 @@
       "binary": "bash-language-server",
       "install": "npm install -g bash-language-server",
       "fallback_binaries": [],
-      "args": ["start"]
+      "args": ["start"],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "",
@@ -32,11 +33,12 @@
     "lsp": {
       "binary": "bicep-langserver",
       "install": "",
-      "install_linux": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
+      "install_linux": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); if [ \"$DOTNET_MAJOR\" -ge 10 ] 2>/dev/null; then BICEP_TAG=$(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep tag_name | cut -d'\"' -f4); else BICEP_TAG=\"v0.39.26\"; fi; echo \"Installing bicep-langserver $BICEP_TAG (dotnet $DOTNET_MAJOR)\"; curl -sL \"https://github.com/Azure/bicep/releases/download/$BICEP_TAG/bicep-langserver.zip\" -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
       "install_macos": "brew install bicep && mkdir -p ~/.local/bin && ln -sf $(brew --prefix)/bin/bicep-langserver ~/.local/bin/bicep-langserver",
       "install_windows": "",
       "fallback_binaries": [],
-      "args": ["--stdio"]
+      "args": ["--stdio"],
+      "dependencies": ["dotnet"]
     },
     "dap": {
       "adapter": "",
@@ -85,7 +87,8 @@
       "binary": "csharp-ls",
       "install": "dotnet tool install -g csharp-ls",
       "fallback_binaries": [],
-      "args": []
+      "args": [],
+      "dependencies": ["dotnet"]
     },
     "dap": {
       "adapter": "netcoredbg",
@@ -131,7 +134,8 @@
       "binary": "gopls",
       "install": "go install golang.org/x/tools/gopls@latest",
       "fallback_binaries": [],
-      "args": []
+      "args": [],
+      "dependencies": ["go"]
     },
     "dap": {
       "adapter": "delve",
@@ -177,7 +181,8 @@
       "binary": "typescript-language-server",
       "install": "npm install -g typescript typescript-language-server",
       "fallback_binaries": [],
-      "args": ["--stdio"]
+      "args": ["--stdio"],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "js-debug",
@@ -203,7 +208,8 @@
       "install_macos": "brew install texlab",
       "install_windows": "",
       "fallback_binaries": ["digestif"],
-      "args": []
+      "args": [],
+      "dependencies": ["cargo"]
     },
     "dap": {
       "adapter": "",
@@ -250,7 +256,8 @@
       "binary": "vscode-json-languageserver",
       "install": "npm install -g vscode-langservers-extracted",
       "fallback_binaries": ["vscode-json-language-server"],
-      "args": ["--stdio"]
+      "args": ["--stdio"],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "",
@@ -330,7 +337,8 @@
       "binary": "intelephense",
       "install": "npm install -g intelephense",
       "fallback_binaries": [],
-      "args": []
+      "args": [],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "",
@@ -353,7 +361,8 @@
       "binary": "pyright-langserver",
       "install": "npm install -g pyright",
       "fallback_binaries": ["basedpyright-langserver", "pylsp", "jedi-language-server"],
-      "args": ["--stdio"]
+      "args": ["--stdio"],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "debugpy",
@@ -376,7 +385,8 @@
       "binary": "ruby-lsp",
       "install": "gem install ruby-lsp",
       "fallback_binaries": [],
-      "args": []
+      "args": [],
+      "dependencies": ["gem"]
     },
     "dap": {
       "adapter": "",
@@ -399,7 +409,8 @@
       "binary": "rust-analyzer",
       "install": "cargo install rust-analyzer",
       "fallback_binaries": [],
-      "args": []
+      "args": [],
+      "dependencies": ["cargo"]
     },
     "dap": {
       "adapter": "codelldb",
@@ -474,7 +485,8 @@
       "binary": "yaml-language-server",
       "install": "npm install -g yaml-language-server",
       "fallback_binaries": [],
-      "args": ["--stdio"]
+      "args": ["--stdio"],
+      "dependencies": ["npm"]
     },
     "dap": {
       "adapter": "",

@@ -10,6 +10,7 @@ workspace_markers = ["go.mod", "go.sum"]
 binary = "gopls"
 install = "go install golang.org/x/tools/gopls@latest"
 args = []
+dependencies = ["go"]
 
 [dap]
 adapter = "delve"

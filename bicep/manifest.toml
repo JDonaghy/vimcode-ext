@@ -1,7 +1,7 @@
 name = "bicep"
 display_name = "Bicep Language Support"
 description = "LSP for Azure Bicep infrastructure-as-code files"
-version = "1.0.0"
+version = "1.1.0"
 file_extensions = [".bicep", ".bicepparam"]
 language_ids = ["bicep"]
 workspace_markers = ["bicepconfig.json", "main.bicep"]
@@ -9,10 +9,23 @@ workspace_markers = ["bicepconfig.json", "main.bicep"]
 [lsp]
 binary = "bicep-langserver"
 install = ""
-install_linux = "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && curl -sL $(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep browser_download_url | grep bicep-langserver.zip | head -1 | cut -d'\"' -f4) -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip"
+install_linux = """mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && \
+DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); \
+if [ "$DOTNET_MAJOR" -ge 10 ] 2>/dev/null; then \
+  BICEP_TAG=$(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep tag_name | cut -d'"' -f4); \
+else \
+  BICEP_TAG="v0.39.26"; \
+fi; \
+echo "Installing bicep-langserver $BICEP_TAG (dotnet $DOTNET_MAJOR)"; \
+curl -sL "https://github.com/Azure/bicep/releases/download/$BICEP_TAG/bicep-langserver.zip" -o /tmp/bicep-langserver.zip && \
+unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && \
+printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll "$@"\\n' > ~/.local/bin/bicep-langserver && \
+chmod +x ~/.local/bin/bicep-langserver && \
+rm /tmp/bicep-langserver.zip"""
 install_macos = "brew install bicep && mkdir -p ~/.local/bin && ln -sf $(brew --prefix)/bin/bicep-langserver ~/.local/bin/bicep-langserver"
 install_windows = ""
 fallback_binaries = []
 args = ["--stdio"]
+dependencies = ["dotnet"]
 
 scripts = []

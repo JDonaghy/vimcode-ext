@@ -11,6 +11,7 @@ binary = "pyright-langserver"
 install = "npm install -g pyright"
 fallback_binaries = ["basedpyright-langserver", "pylsp", "jedi-language-server"]
 args = ["--stdio"]
+dependencies = ["npm"]
 
 [dap]
 adapter = "debugpy"

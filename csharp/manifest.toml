@@ -10,6 +10,7 @@ workspace_markers = ["*.csproj", "*.sln"]
 binary = "csharp-ls"
 install = "dotnet tool install -g csharp-ls"
 args = []
+dependencies = ["dotnet"]
 
 [dap]
 adapter = "netcoredbg"

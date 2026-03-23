@@ -10,6 +10,7 @@ workspace_markers = ["Cargo.toml"]
 binary = "rust-analyzer"
 install = "cargo install rust-analyzer"
 args = []
+dependencies = ["cargo"]
 
 [dap]
 adapter = "codelldb"

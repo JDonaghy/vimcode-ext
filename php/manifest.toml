@@ -10,5 +10,6 @@ workspace_markers = ["composer.json"]
 binary = "intelephense"
 install = "npm install -g intelephense"
 args = []
+dependencies = ["npm"]
 
 scripts = []

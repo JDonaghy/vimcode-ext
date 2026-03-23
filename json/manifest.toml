@@ -11,5 +11,6 @@ binary = "vscode-json-languageserver"
 install = "npm install -g vscode-langservers-extracted"
 fallback_binaries = ["vscode-json-language-server"]
 args = ["--stdio"]
+dependencies = ["npm"]
 
 scripts = []

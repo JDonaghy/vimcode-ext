@@ -10,6 +10,7 @@ workspace_markers = ["package.json", "tsconfig.json"]
 binary = "typescript-language-server"
 install = "npm install -g typescript typescript-language-server"
 args = ["--stdio"]
+dependencies = ["npm"]
 
 [dap]
 adapter = "js-debug"

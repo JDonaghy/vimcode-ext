@@ -9,5 +9,6 @@ language_ids = ["shellscript", "bash"]
 binary = "bash-language-server"
 install = "npm install -g bash-language-server"
 args = ["start"]
+dependencies = ["npm"]
 
 scripts = []

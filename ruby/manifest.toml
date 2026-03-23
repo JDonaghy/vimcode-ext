@@ -10,5 +10,6 @@ workspace_markers = ["Gemfile", "Gemfile.lock"]
 binary = "ruby-lsp"
 install = "gem install ruby-lsp"
 args = []
+dependencies = ["gem"]
 
 scripts = []

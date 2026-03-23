@@ -15,6 +15,7 @@ install_macos = "brew install texlab"
 install_windows = ""
 fallback_binaries = ["digestif"]
 args = []
+dependencies = ["cargo"]
 
 [comment]
 line = "%"
