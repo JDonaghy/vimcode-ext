@@ -410,7 +410,8 @@
       "install": "cargo install rust-analyzer",
       "fallback_binaries": [],
       "args": [],
-      "dependencies": ["cargo"]
+      "dependencies": ["cargo"],
+      "ignore_error_sources": ["rust-analyzer"]
     },
     "dap": {
       "adapter": "codelldb",

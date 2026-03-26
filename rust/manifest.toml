@@ -11,6 +11,7 @@ binary = "rust-analyzer"
 install = "cargo install rust-analyzer"
 args = []
 dependencies = ["cargo"]
+ignore_error_sources = ["rust-analyzer"]
 
 [dap]
 adapter = "codelldb"
