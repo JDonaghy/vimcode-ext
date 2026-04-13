@@ -407,16 +407,23 @@
     "language_ids": ["rust"],
     "lsp": {
       "binary": "rust-analyzer",
-      "install": "cargo install rust-analyzer",
+      "install": "rustup component add rust-analyzer",
+      "install_linux": "",
+      "install_macos": "",
+      "install_windows": "rustup component add rust-analyzer",
       "fallback_binaries": [],
       "args": [],
-      "dependencies": ["cargo"],
-      "ignore_error_sources": ["rust-analyzer"]
+      "dependencies": ["rustup"],
+      "ignore_error_sources": ["rust-analyzer"],
+      "initialization_options": null
     },
     "dap": {
       "adapter": "codelldb",
       "binary": "codelldb",
       "install": "",
+      "install_linux": "",
+      "install_macos": "",
+      "install_windows": "",
       "transport": "tcp",
       "args": ["--port", "0"]
     },

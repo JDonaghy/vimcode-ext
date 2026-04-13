@@ -8,9 +8,10 @@ workspace_markers = ["Cargo.toml"]
 
 [lsp]
 binary = "rust-analyzer"
-install = "cargo install rust-analyzer"
+install = "rustup component add rust-analyzer"
+install_windows = "rustup component add rust-analyzer"
 args = []
-dependencies = ["cargo"]
+dependencies = ["rustup"]
 ignore_error_sources = ["rust-analyzer"]
 
 [dap]
