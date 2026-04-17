@@ -186,6 +186,12 @@ vimcode.on("panel_focus", function(name)
   refresh_all()
 end)
 
+-- Refresh when the git branch changes externally (e.g. `git checkout` in a
+-- shell). Fired by VimCode's tick_git_branch() when the branch name changes.
+vimcode.on("git_branch_changed", function(_)
+  refresh_all()
+end)
+
 -- Expand: fetch files for commit and rebuild items so children exist
 vimcode.on("panel_expand", function(arg)
   local e = vimcode.panel.parse_event(arg)
