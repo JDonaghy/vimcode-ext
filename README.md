@@ -67,6 +67,26 @@ cp -r my-extension ~/.config/vimcode/extensions/my-extension
 └── ...
 ```
 
+## Validation
+
+Every manifest and `registry.json` are checked by a stdlib-only script — no
+dependencies, no network, and it never runs an extension's install command:
+
+```bash
+python3 scripts/validate.py     # exit 0 = clean, 1 = problems, one line each
+```
+
+It verifies that each `*/manifest.toml` parses, carries its required keys with
+the right types, and declares a `name` matching its directory; that
+`registry.json` parses and covers exactly the extension directories present;
+and that every meaningful field agrees between a manifest and its registry
+entry. `registry.json` is a normalised aggregate of the manifests — the
+manifest is the source of truth, so when the two disagree it is almost always
+the registry that needs updating.
+
+Run it before opening a PR. It is also the repo's Test-gate command for
+automated dispatch.
+
 ## License
 
 Extensions in this repository are provided under the same license as VimCode unless otherwise noted in individual extension directories.
