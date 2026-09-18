@@ -104,7 +104,7 @@
     "name": "git-insights",
     "display_name": "Git Insights",
     "description": "Inline git blame, file/line history, commit show, diff, stash management",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "file_extensions": [],
     "language_ids": [],
     "lsp": {
