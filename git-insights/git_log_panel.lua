@@ -4,7 +4,7 @@
 vimcode.panel.register("git_log", {
   title = "GIT LOG",
   icon = "\u{f1d3}",
-  sections = { "Branches", "Log", "Stash" },
+  sections = { "Log", "Stash" },
 })
 
 vimcode.panel.set_help("git_log", {
@@ -120,26 +120,6 @@ local function refresh_log_section()
 end
 
 local function refresh_all()
-  -- Branches
-  local branches = vimcode.git.branches()
-  local branch_items = {}
-  if branches then
-    for _, b in ipairs(branches) do
-      local hint = ""
-      if b.ahead_behind and b.ahead_behind ~= "" then
-        hint = b.ahead_behind
-      end
-      table.insert(branch_items, {
-        text = b.name,
-        icon = b.is_current and "\u{f111}" or " ",
-        style = b.is_current and "accent" or "normal",
-        hint = hint,
-        id = b.name,
-      })
-    end
-  end
-  vimcode.panel.set_items("git_log", "Branches", branch_items)
-
   -- Log
   full_log = vimcode.git.log(100)
 

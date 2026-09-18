@@ -83,7 +83,7 @@ local function build_hover(state, diff_output)
   local actions = {}
   table.insert(actions, "[Open Commit](command:GitShow?" .. state.short_hash .. ")")
   table.insert(actions, "[Copy Hash](command:GitCopyHash?" .. state.short_hash .. ")")
-  md = md .. "\n\n---\n\n" .. table.concat(actions, " &nbsp;|&nbsp; ")
+  md = md .. "\n\n---\n\n" .. table.concat(actions, "   |   ")
   md = md .. "\n\n" .. hash_link
   return md
 end
