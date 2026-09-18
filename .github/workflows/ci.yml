@@ -1,0 +1,18 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The same command coordinator.yml gives this repo as its `test_command`,
+      # so the Test gate and CI can never prove different things. Stdlib only
+      # (tomllib needs 3.11+), no network, and it never executes an
+      # extension's install command — see scripts/validate.py's own header.
+      - run: python3 scripts/validate.py
