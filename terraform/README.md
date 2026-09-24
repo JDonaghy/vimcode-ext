@@ -7,7 +7,10 @@ Language support for HashiCorp Terraform and OpenTofu — diagnostics, completio
 
 ## Prerequisites
 
-- **terraform-ls** must be installed manually and placed on PATH.
+- **terraform-ls** must be on PATH.
+
+`:ExtInstall terraform` installs terraform-ls into `~/.local/bin` on Linux/WSL (needs
+`curl` + `unzip`).
 
 ```
 # macOS
@@ -15,8 +18,6 @@ brew install hashicorp/tap/terraform-ls
 
 # Or download from https://releases.hashicorp.com/terraform-ls/
 ```
-
-Note: terraform-ls cannot be auto-installed — use your platform's package manager or download directly.
 
 ## Features
 
