@@ -11,7 +11,7 @@ Provides LSP intelligence for Markdown files via [marksman](https://github.com/a
 
 ## Installation
 
-**Linux:** Downloads the latest release binary from GitHub into `~/.local/bin/`.
+**Linux:** Downloads the latest release binary from GitHub (x86_64 or arm64, matched to `uname -m`) into `~/.local/bin/`.
 
 **macOS:** Installs via Homebrew (`brew install marksman`).
 

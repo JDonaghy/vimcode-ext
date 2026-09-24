@@ -1,7 +1,7 @@
 name = "lua"
 display_name = "Lua Language Support"
 description = "LSP intelligence for Lua via lua-language-server"
-version = "1.0.0"
+version = "1.0.1"
 file_extensions = [".lua"]
 language_ids = ["lua"]
 workspace_markers = [".luarc.json", ".luarc.jsonc", ".luacheckrc"]
@@ -9,7 +9,7 @@ workspace_markers = [".luarc.json", ".luarc.jsonc", ".luacheckrc"]
 [lsp]
 binary = "lua-language-server"
 install = ""
-install_linux = "mkdir -p ~/.local/share/lua-language-server ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/LuaLS/lua-language-server/releases/latest | grep browser_download_url | grep linux-x64.tar.gz | head -1 | cut -d'\"' -f4)\" | tar xz -C ~/.local/share/lua-language-server && ln -sf ~/.local/share/lua-language-server/bin/lua-language-server ~/.local/bin/lua-language-server"
+install_linux = "mkdir -p ~/.local/share/lua-language-server ~/.local/bin && A=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && curl -fsSL \"$(curl -s https://api.github.com/repos/LuaLS/lua-language-server/releases/latest | grep browser_download_url | grep \"linux-${A}.tar.gz\" | head -1 | cut -d'\"' -f4)\" | tar xz -C ~/.local/share/lua-language-server && ln -sf ~/.local/share/lua-language-server/bin/lua-language-server ~/.local/bin/lua-language-server"
 install_macos = "brew install lua-language-server"
 install_windows = ""
 fallback_binaries = []
