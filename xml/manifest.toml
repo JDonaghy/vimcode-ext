@@ -1,7 +1,7 @@
 name = "xml"
 display_name = "XML Language Support"
 description = "LSP formatting and validation for XML"
-version = "1.0.0"
+version = "1.0.1"
 file_extensions = [".xml", ".xsd", ".xsl", ".xslt", ".svg", ".pom"]
 language_ids = ["xml", "xsl"]
 workspace_markers = ["pom.xml"]
@@ -9,8 +9,8 @@ workspace_markers = ["pom.xml"]
 [lsp]
 binary = "lemminx"
 install = ""
-install_linux = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep linux-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx"
-install_macos = "mkdir -p ~/.local/bin && curl -sL \"$(curl -s https://api.github.com/repos/eclipse/lemminx/releases/latest | grep browser_download_url | grep osx-x86_64 | grep -v sha256 | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx"
+install_linux = "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-linux-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-linux-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\""
+install_macos = "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-osx-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-osx-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\""
 install_windows = ""
 fallback_binaries = []
 args = []

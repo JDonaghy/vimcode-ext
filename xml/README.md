@@ -7,9 +7,12 @@ Language support for XML — formatting, validation, and schema support.
 
 ## Prerequisites
 
-- **lemminx** must be installed manually and placed on PATH. Download from the Eclipse LemMinX releases page.
+- **lemminx** must be on PATH.
 
-Note: lemminx cannot be auto-installed — download the binary for your platform.
+`:ExtInstall xml` downloads the lemminx binary into `~/.local/bin` on Linux/WSL and
+macOS (x86_64 and arm64, needs `curl` + `unzip`), from the
+[redhat-developer/vscode-xml](https://github.com/redhat-developer/vscode-xml/releases)
+releases — upstream `eclipse/lemminx` publishes no GitHub releases of its own.
 
 ## Features
 

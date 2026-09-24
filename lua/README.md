@@ -10,7 +10,7 @@ Provides LSP intelligence for Lua files via [lua-language-server](https://github
 
 ## Installation
 
-**Linux:** Installs the latest release from GitHub into `~/.local/share/lua-language-server/` and symlinks the binary to `~/.local/bin/`.
+**Linux:** Installs the latest release from GitHub (x86_64 or arm64, matched to `uname -m`) into `~/.local/share/lua-language-server/` and symlinks the binary to `~/.local/bin/`.
 
 **macOS:** Installs via Homebrew (`brew install lua-language-server`).
 
