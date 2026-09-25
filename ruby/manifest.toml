@@ -1,7 +1,7 @@
 name = "ruby"
 display_name = "Ruby Language Support"
 description = "LSP for Ruby"
-version = "1.0.0"
+version = "1.1.0"
 file_extensions = [".rb", ".rake", ".gemspec"]
 language_ids = ["ruby"]
 workspace_markers = ["Gemfile", "Gemfile.lock"]
@@ -9,6 +9,7 @@ workspace_markers = ["Gemfile", "Gemfile.lock"]
 [lsp]
 binary = "ruby-lsp"
 install = "gem install ruby-lsp"
+install_macos = "brew install ruby-lsp"
 args = []
 dependencies = ["gem"]
 
