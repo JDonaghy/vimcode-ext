@@ -436,7 +436,7 @@
     "name": "terraform",
     "display_name": "Terraform Language Support",
     "description": "LSP for HashiCorp Terraform and OpenTofu",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "file_extensions": [".tf", ".tfvars", ".hcl"],
     "language_ids": ["terraform", "terraform-vars"],
     "lsp": {
@@ -446,7 +446,8 @@
       "install_macos": "brew install hashicorp/tap/terraform-ls",
       "install_windows": "",
       "fallback_binaries": ["terraform-lsp"],
-      "args": ["serve"]
+      "args": ["serve"],
+      "acquire": {"kind": "hashicorp-release", "product": "terraform-ls"}
     },
     "dap": {
       "adapter": "",

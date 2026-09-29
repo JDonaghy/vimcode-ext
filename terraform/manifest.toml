@@ -1,7 +1,7 @@
 name = "terraform"
 display_name = "Terraform Language Support"
 description = "LSP for HashiCorp Terraform and OpenTofu"
-version = "1.0.1"
+version = "1.1.0"
 file_extensions = [".tf", ".tfvars", ".hcl"]
 language_ids = ["terraform", "terraform-vars"]
 workspace_markers = ["main.tf", ".terraform", ".terraform.lock.hcl"]
@@ -16,3 +16,12 @@ fallback_binaries = ["terraform-lsp"]
 args = ["serve"]
 
 scripts = []
+
+# vimcode >= 0.13.0 (#1345): downloads, verifies (SHA256SUMS) and unpacks
+# terraform-ls itself on all three platforms, no shell/curl/unzip/sudo/PATH
+# setup. Older vimcode ignores an [lsp.acquire] table it doesn't understand
+# (serde `default`), so install_linux/install_macos above stay as the
+# fallback until the minimum supported vimcode has acquire.
+[lsp.acquire]
+kind = "hashicorp-release"
+product = "terraform-ls"

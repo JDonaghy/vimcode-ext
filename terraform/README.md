@@ -7,10 +7,12 @@ Language support for HashiCorp Terraform and OpenTofu — diagnostics, completio
 
 ## Prerequisites
 
-- **terraform-ls** must be on PATH.
+None. `:ExtInstall terraform` installs terraform-ls automatically on Linux, macOS and
+Windows — vimcode downloads the right build straight from HashiCorp's release API,
+verifies its SHA-256 checksum, and unpacks it, with no shell command, `curl`, `unzip`,
+`sudo`, or PATH setup of any kind.
 
-`:ExtInstall terraform` installs terraform-ls into `~/.local/bin` on Linux/WSL (needs
-`curl` + `unzip`).
+If you'd rather install it yourself:
 
 ```
 # macOS

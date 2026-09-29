@@ -20,6 +20,8 @@ What it checks
    ``scripts``/``workspace_markers`` for every entry even where the manifest
    omits them, so a naive dict comparison reports false drift);
 5. install commands, where declared, are non-empty and not obviously unsafe.
+6. an ``[lsp.acquire]`` / ``[dap.acquire]`` table (#1345), where declared,
+   has a valid ``kind`` and that kind's required keys.
 
 NOT EXECUTED: install commands are inspected as strings only. Several resolve
 to ``brew install ...`` or ``npm install -g ...``; running them would make this
@@ -71,6 +73,7 @@ LSP_FIELDS: dict[str, object] = {
     "fallback_binaries": [],
     "args": [],
     "dependencies": [],
+    "acquire": None,
 }
 
 DAP_FIELDS: dict[str, object] = {
@@ -79,7 +82,27 @@ DAP_FIELDS: dict[str, object] = {
     "install": "",
     "transport": "",
     "args": [],
+    "acquire": None,
 }
+
+# Native tool acquisition (#1345, `vimcode::core::tool_acquire::AcquireConfig`).
+# `acquire` mirrors like `dependencies` above -- copied byte-for-byte from the
+# manifest, not expanded with the Rust struct's per-kind field defaults (there
+# is no established "always fully spelled out" convention for it the way
+# TOP_FIELDS has for the extension-level table).
+ACQUIRE_KINDS = ("hashicorp-release", "github-release", "url-template")
+
+# Non-empty keys each `kind` requires, matching the `BadConfig` errors
+# `tool_acquire.rs`'s `resolve_hashicorp_release` / `resolve_github_release` /
+# `resolve_url_template` raise at runtime for the same thing.
+ACQUIRE_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
+    "hashicorp-release": ("product",),
+    "github-release": ("repo", "asset"),
+    "url-template": ("url",),
+}
+
+ACQUIRE_STR_KEYS = ("kind", "product", "repo", "asset", "url", "version", "binary_path")
+ACQUIRE_DICT_KEYS = ("os_map", "arch_map")
 
 # Substrings that have no business in a declarative install command. Not a
 # sandbox -- a cheap guard against the obviously destructive.
@@ -121,6 +144,7 @@ def load_manifests(root: pathlib.Path) -> tuple[dict[str, dict], list[str]]:
                 by_name[name] = data
 
         problems.extend(check_install_commands(rel, data))
+        problems.extend(check_acquire_tables(rel, data))
 
     if not by_name and not problems:
         problems.append("no */manifest.toml found -- wrong directory?")
@@ -150,6 +174,45 @@ def check_install_commands(rel: pathlib.Path, data: dict) -> list[str]:
             for bad in FORBIDDEN_IN_INSTALL:
                 if bad in cmd:
                     problems.append(f"{rel}: [{table}].{key} contains {bad!r}")
+    return problems
+
+
+def check_acquire_tables(rel: pathlib.Path, data: dict) -> list[str]:
+    """``[lsp.acquire]`` / ``[dap.acquire]``, where declared: a valid ``kind``,
+    and that ``kind``'s required keys present and non-empty."""
+    problems: list[str] = []
+    for table in ("lsp", "dap"):
+        section = data.get(table)
+        if not isinstance(section, dict):
+            continue
+        acquire = section.get("acquire")
+        if acquire is None:
+            continue
+        label = f"{rel}: [{table}.acquire]"
+        if not isinstance(acquire, dict):
+            problems.append(f"{label} must be a table")
+            continue
+
+        kind = acquire.get("kind")
+        if kind not in ACQUIRE_KINDS:
+            problems.append(f"{label}.kind must be one of {ACQUIRE_KINDS}, got {kind!r}")
+            kind = None
+
+        for key in ACQUIRE_STR_KEYS:
+            if key in acquire and not isinstance(acquire[key], str):
+                problems.append(f"{label}.{key} must be a string")
+        for key in ACQUIRE_DICT_KEYS:
+            if key in acquire and not isinstance(acquire[key], dict):
+                problems.append(f"{label}.{key} must be a table")
+
+        if kind is not None:
+            for key in ACQUIRE_REQUIRED_KEYS[kind]:
+                if not acquire.get(key):
+                    problems.append(f"{label} kind {kind!r} requires non-empty '{key}'")
+            # `resolve_url_template` has no release API to resolve "latest"
+            # against -- it rejects an unpinned version at runtime.
+            if kind == "url-template" and acquire.get("version", "latest") in ("", "latest"):
+                problems.append(f"{label} kind 'url-template' requires a pinned 'version'")
     return problems
 
 
