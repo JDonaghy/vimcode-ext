@@ -1,14 +1,90 @@
 name = "csharp"
 display_name = "C# Language Support"
 description = "LSP, debugger, and tooling for C# (.NET)"
-version = "1.0.0"
+version = "1.1.0"
 file_extensions = [".cs", ".csproj", ".sln"]
 language_ids = ["csharp"]
 workspace_markers = ["*.csproj", "*.sln"]
 
 [lsp]
 binary = "csharp-ls"
+# #15: unpinned `dotnet tool install -g csharp-ls` grabs the newest csharp-ls,
+# which ships a `tools/netN.0` folder for whatever .NET major is current when
+# it's released (net10.0 as of csharp-ls 0.21.0+). `dotnet tool install` on an
+# older SDK then can't find a matching tools/ folder and fails with NuGet's
+# "DotnetToolSettings.xml was not found in the package" -- a major version can
+# only roll forward at run time, never back, so there is no fixing this by
+# retrying. install_linux/install_macos below read `dotnet --version`'s major
+# and pin `--version` to the newest csharp-ls release that still ships a
+# tools/ folder for that major (checked against the real NuGet package
+# contents, api.nuget.org/v3-flatcontainer/csharp-ls/<version>/csharp-ls.<version>.nupkg
+# -> tools/<tfm>/any/DotnetToolSettings.xml): net6.0 up to 0.5.7, net7.0 up to
+# 0.10.0, net8.0 up to 0.16.0, net9.0 up to 0.20.0, net10.0+ from 0.21.0 (so
+# major 10+ stays unpinned and always gets the newest). Below major 6, there
+# is no compatible csharp-ls release, so the install fails with an actionable
+# message instead of running `dotnet tool install` into NuGet's confusing one.
+# Generic `install` below is unchanged (plain, unversioned) and stays the
+# Windows path -- install_windows is still "" (no override), so it falls back
+# to it, same as today; writing the SDK-detection logic in POSIX sh only
+# covers install_linux/install_macos, the same split latex/manifest.toml uses
+# for its own platform-specific override.
 install = "dotnet tool install -g csharp-ls"
+install_linux = """DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); \
+if [ -z "$DOTNET_MAJOR" ]; then \
+  echo "csharp-ls needs .NET SDK 6+; no dotnet SDK found on PATH" >&2; \
+  exit 1; \
+fi; \
+CSLS_VERSION=""; \
+if [ "$DOTNET_MAJOR" -ge 10 ] 2>/dev/null; then \
+  CSLS_VERSION=""; \
+elif [ "$DOTNET_MAJOR" -ge 9 ] 2>/dev/null; then \
+  CSLS_VERSION="0.20.0"; \
+elif [ "$DOTNET_MAJOR" -ge 8 ] 2>/dev/null; then \
+  CSLS_VERSION="0.16.0"; \
+elif [ "$DOTNET_MAJOR" -ge 7 ] 2>/dev/null; then \
+  CSLS_VERSION="0.10.0"; \
+elif [ "$DOTNET_MAJOR" -ge 6 ] 2>/dev/null; then \
+  CSLS_VERSION="0.5.7"; \
+else \
+  echo "csharp-ls needs .NET SDK 6+; you have $DOTNET_MAJOR" >&2; \
+  exit 1; \
+fi; \
+if [ -n "$CSLS_VERSION" ]; then \
+  echo "Installing csharp-ls $CSLS_VERSION (newest release supporting dotnet $DOTNET_MAJOR)"; \
+  dotnet tool install -g csharp-ls --version "$CSLS_VERSION"; \
+else \
+  echo "Installing csharp-ls latest (dotnet $DOTNET_MAJOR)"; \
+  dotnet tool install -g csharp-ls; \
+fi"""
+install_macos = """DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); \
+if [ -z "$DOTNET_MAJOR" ]; then \
+  echo "csharp-ls needs .NET SDK 6+; no dotnet SDK found on PATH" >&2; \
+  exit 1; \
+fi; \
+CSLS_VERSION=""; \
+if [ "$DOTNET_MAJOR" -ge 10 ] 2>/dev/null; then \
+  CSLS_VERSION=""; \
+elif [ "$DOTNET_MAJOR" -ge 9 ] 2>/dev/null; then \
+  CSLS_VERSION="0.20.0"; \
+elif [ "$DOTNET_MAJOR" -ge 8 ] 2>/dev/null; then \
+  CSLS_VERSION="0.16.0"; \
+elif [ "$DOTNET_MAJOR" -ge 7 ] 2>/dev/null; then \
+  CSLS_VERSION="0.10.0"; \
+elif [ "$DOTNET_MAJOR" -ge 6 ] 2>/dev/null; then \
+  CSLS_VERSION="0.5.7"; \
+else \
+  echo "csharp-ls needs .NET SDK 6+; you have $DOTNET_MAJOR" >&2; \
+  exit 1; \
+fi; \
+if [ -n "$CSLS_VERSION" ]; then \
+  echo "Installing csharp-ls $CSLS_VERSION (newest release supporting dotnet $DOTNET_MAJOR)"; \
+  dotnet tool install -g csharp-ls --version "$CSLS_VERSION"; \
+else \
+  echo "Installing csharp-ls latest (dotnet $DOTNET_MAJOR)"; \
+  dotnet tool install -g csharp-ls; \
+fi"""
+install_windows = ""
+fallback_binaries = []
 args = []
 dependencies = ["dotnet"]
 
