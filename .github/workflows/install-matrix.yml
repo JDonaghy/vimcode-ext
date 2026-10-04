@@ -1,0 +1,66 @@
+name: Install matrix (#17)
+# Actually runs every extension's install command and proves the resulting
+# binary speaks LSP/DAP -- scripts/install_matrix.py, the 2026-10-03 bugbash
+# harness. This is deliberately separate from ci.yml's `validate` job: that
+# job is the repo's one gating Test command (static, offline, never executes
+# an install string); this workflow executes every one of them for real.
+#
+# Decision needed before this schedule is relied on (code-coordinator#3319,
+# this issue's own "Decision needed" section): it mutates whatever machine
+# runs it -- global tool installs, network access, no sandbox. It must only
+# ever point at a disposable box or container per OS, never a machine anyone
+# depends on. The `self-hosted` runner labels below are placeholders: no
+# such runners are registered by this PR. An operator who wants the schedule
+# to produce real signal has to provision one disposable, dedicated runner
+# per OS (macOS, Linux, and a WSL distro on Windows -- the script shells out
+# via `wslpath`/`/mnt/c/...` for the Windows leg, so a plain GitHub-hosted
+# `windows-latest` runner, which has no WSL, cannot run it) and register it
+# under these labels. Until then this workflow has no runner to land on and
+# will simply queue.
+#
+# Never wired to `pull_request`/`push`: a flaky `brew`/`npm`/network hiccup
+# here must never block a merge the way scripts/validate.py's static checks
+# do.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  macos:
+    runs-on: [self-hosted, vimcode-ext-install-matrix, macos]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/install_matrix.py . macos | tee install-matrix-macos.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-matrix-macos
+          path: install-matrix-macos.jsonl
+
+  linux:
+    runs-on: [self-hosted, vimcode-ext-install-matrix, linux]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/install_matrix.py . linux | tee install-matrix-linux.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-matrix-linux
+          path: install-matrix-linux.jsonl
+
+  windows:
+    # The windows leg runs from WSL against the Windows 11 host, same as the
+    # bugbash did -- see scripts/install_matrix.py's WIN_PS/wslpath use.
+    runs-on: [self-hosted, vimcode-ext-install-matrix, windows-wsl]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/install_matrix.py . windows | tee install-matrix-windows.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-matrix-windows
+          path: install-matrix-windows.jsonl
