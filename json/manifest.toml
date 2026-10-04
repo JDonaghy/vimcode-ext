@@ -1,7 +1,7 @@
 name = "json"
 display_name = "JSON Language Support"
 description = "LSP formatting and validation for JSON"
-version = "1.0.0"
+version = "1.1.0"
 file_extensions = [".json", ".jsonc", ".json5"]
 language_ids = ["json", "jsonc"]
 workspace_markers = ["package.json", "tsconfig.json"]

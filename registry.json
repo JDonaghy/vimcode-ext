@@ -3,7 +3,7 @@
     "name": "bash",
     "display_name": "Bash / Shell Support",
     "description": "LSP for Bash and shell scripts",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".sh", ".bash", ".zsh", ".fish"],
     "language_ids": ["shellscript", "bash"],
     "lsp": {
@@ -176,7 +176,7 @@
     "name": "javascript",
     "display_name": "JavaScript / TypeScript Support",
     "description": "LSP for JavaScript and TypeScript",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "file_extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
     "language_ids": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
     "lsp": {
@@ -252,7 +252,7 @@
     "name": "json",
     "display_name": "JSON Language Support",
     "description": "LSP formatting and validation for JSON",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".json", ".jsonc", ".json5"],
     "language_ids": ["json", "jsonc"],
     "lsp": {
@@ -334,7 +334,7 @@
     "name": "php",
     "display_name": "PHP Language Support",
     "description": "LSP for PHP",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".php"],
     "language_ids": ["php"],
     "lsp": {
@@ -359,7 +359,7 @@
     "name": "python",
     "display_name": "Python Language Support",
     "description": "LSP and debugger for Python",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".py", ".pyi", ".pyw"],
     "language_ids": ["python"],
     "lsp": {
@@ -494,7 +494,7 @@
     "name": "yaml",
     "display_name": "YAML Language Support",
     "description": "LSP formatting and validation for YAML",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".yml", ".yaml"],
     "language_ids": ["yaml"],
     "lsp": {
