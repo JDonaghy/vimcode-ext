@@ -14,3 +14,19 @@ args = ["--stdio"]
 dependencies = ["npm"]
 
 scripts = []
+
+# vimcode >= 0.14.0 (#1346): installs vscode-langservers-extracted via `npm
+# install --prefix` into a private, vimcode-managed prefix -- no sudo, no
+# global npm prefix (the #14 bug: a stock Linux box's system node has a
+# root-owned global prefix, so `npm install -g` dies with EACCES for a
+# normal user). `binary_path` is required here: the npm package's own bin
+# is `vscode-json-language-server` (hyphenated, matching this manifest's
+# `fallback_binaries` entry), not `binary` above -- without it vimcode
+# would look for a file this package never installs. Older vimcode ignores
+# an [lsp.acquire] table it doesn't understand (serde `default`), so
+# `install` above stays as the tier-3 fallback until the minimum supported
+# vimcode has acquire.
+[lsp.acquire]
+kind = "npm"
+package = "vscode-langservers-extracted"
+binary_path = "vscode-json-language-server"
