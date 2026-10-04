@@ -10,7 +10,9 @@ Language support for XML — formatting, validation, and schema support.
 - **lemminx** must be on PATH.
 
 `:ExtInstall xml` downloads the lemminx binary into `~/.local/bin` on Linux/WSL and
-macOS (x86_64 and arm64, needs `curl` + `unzip`), from the
+macOS (x86_64 and arm64, needs `curl` + `unzip`), and into
+`%USERPROFILE%\.local\bin\lemminx.exe` on Windows (needs `powershell`, bundled with
+every supported Windows release), all from the
 [redhat-developer/vscode-xml](https://github.com/redhat-developer/vscode-xml/releases)
 releases — upstream `eclipse/lemminx` publishes no GitHub releases of its own.
 

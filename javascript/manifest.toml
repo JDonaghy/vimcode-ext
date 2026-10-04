@@ -1,7 +1,7 @@
 name = "javascript"
 display_name = "JavaScript / TypeScript Support"
 description = "LSP for JavaScript and TypeScript"
-version = "1.1.0"
+version = "1.2.0"
 file_extensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
 language_ids = ["javascript", "typescript", "javascriptreact", "typescriptreact"]
 workspace_markers = ["package.json", "tsconfig.json"]
@@ -11,6 +11,8 @@ binary = "typescript-language-server"
 install = "npm install -g typescript@5 typescript-language-server"
 args = ["--stdio"]
 dependencies = ["npm"]
+
+scripts = []
 
 # vimcode >= 0.14.0 (#1346): installs typescript-language-server via `npm
 # install --prefix` into a private, vimcode-managed prefix -- no sudo, no
@@ -29,11 +31,20 @@ dependencies = ["npm"]
 kind = "npm"
 package = "typescript-language-server"
 
-[dap]
-adapter = "js-debug"
-binary = "node"
-install = ""
-transport = "stdio"
-args = []
-
-scripts = []
+# #16: js-debug (vscode-js-debug) does publish a prebuilt, ready-to-run
+# bundle on every GitHub release (`js-debug-dap-vX.Y.Z.tar.gz`, containing
+# `src/dapDebugServer.js` plus its platform-specific native modules) --
+# but there's no way to wire that up through this schema: `[dap]`'s
+# `binary`/`args` are plain, static TOML with no per-user path expansion
+# (no `$HOME`/`~` substitution anywhere vimcode spawns a configured
+# command -- confirmed against `extensions.rs`/`lsp_manager.rs`), so
+# `args` can never portably name a file this install just unpacked under
+# a particular user's home directory. `[dap.acquire]` (vimcode#1345) can't
+# stand in either: its archive kinds extract exactly one named file, and
+# `src/dapDebugServer.js` doesn't run without the rest of the `js-debug/`
+# tree next to it (bundled dependencies, `.node` native addons). This
+# matches vimcode's own assessment: `dap_manager.rs`'s
+# `install_cmd_for_adapter` already returns `None` for "js-debug" with the
+# comment "requires complex multi-step builds -- no automated install".
+# Per the issue: remove the table rather than advertise a debugger this
+# manifest can't actually install.

@@ -1,7 +1,7 @@
 name = "java"
 display_name = "Java Language Support"
 description = "LSP for Java (manual jdtls install required)"
-version = "1.1.0"
+version = "1.2.0"
 file_extensions = [".java"]
 language_ids = ["java"]
 workspace_markers = ["pom.xml", "build.gradle", "build.gradle.kts"]
@@ -9,14 +9,50 @@ workspace_markers = ["pom.xml", "build.gradle", "build.gradle.kts"]
 [lsp]
 binary = "jdtls"
 install = ""
+# #16: eclipse-jdtls publishes no GitHub Releases and no "latest milestone"
+# convenience URL (only an index page that needs JS to render, and a
+# milestone's tarball name embeds a build timestamp that would go stale the
+# moment a newer milestone ships -- the exact `bicep`/`git-insights`-style
+# version-drift bug this registry's CLAUDE.md already warns about). The
+# snapshot channel does publish a stable alias that's refreshed on every CI
+# build: https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz.
+# Trading "milestone" for "nightly" is a real tradeoff, but it is the only
+# jdtls URL that will not need re-pinning here every time upstream cuts a
+# release -- matches `brew install jdtls`'s own "whatever's current" model.
+#
+# The tarball is platform-neutral (same bytes for Linux/macOS/Windows: it
+# bundles `config_linux/`, `config_mac/, `config_win/` side by side, and
+# `bin/jdtls`/`bin/jdtls.bat` pick the right one), so it is also not a
+# `[lsp.acquire]` (vimcode#1345) candidate -- that mechanism's archive kinds
+# extract exactly one named file, discarding the `plugins/`/`features/`/
+# `config_*/` directories jdtls needs alongside its launcher script.
+install_linux = "mkdir -p ~/.local/share/jdtls ~/.local/bin && curl -fsSL https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz | tar xz -C ~/.local/share/jdtls && chmod +x ~/.local/share/jdtls/bin/jdtls && ln -sf ~/.local/share/jdtls/bin/jdtls ~/.local/bin/jdtls"
 install_macos = "brew install jdtls"
+# Same PATH caveat as bicep's install_windows (see that manifest's comment):
+# `resolve_command`'s `extra_tool_dirs` probe only appends ".exe" for a bare
+# name, never ".cmd", so the generated `jdtls.cmd` wrapper needs
+# `~/.local/bin` added to the user's PATH and a vimcode restart before
+# `where jdtls` (PATHEXT-aware) can find it.
+install_windows = "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $shareDir = Join-Path $env:USERPROFILE '.local\\share\\jdtls'; $binDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $shareDir | Out-Null; New-Item -ItemType Directory -Force -Path $binDir | Out-Null; $tar = Join-Path $env:TEMP 'jdt-language-server-latest.tar.gz'; Invoke-WebRequest -Uri 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz' -OutFile $tar; tar -xzf $tar -C $shareDir; $jdtlsBat = Join-Path $shareDir 'bin\\jdtls.bat'; $q = [char]34; $wrapper = Join-Path $binDir 'jdtls.cmd'; Set-Content -Path $wrapper -Value ('@echo off' + [Environment]::NewLine + 'call ' + $q + $jdtlsBat + $q + ' %*') -Encoding ASCII; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (($userPath -split ';') -notcontains $binDir) { [Environment]::SetEnvironmentVariable('Path', ($userPath + ';' + $binDir), 'User'); Write-Host ('Added ' + $binDir + ' to your user PATH -- restart vimcode for jdtls to be found.') }\""
 args = []
 
-[dap]
-adapter = "java-debug"
-binary = "java-debug-adapter"
-install = ""
-transport = "stdio"
-args = []
+# #16: java-debug (com.microsoft.java.debug.plugin) is not a standalone DAP
+# process at all -- it is a jar that jdtls loads as an OSGi *bundle*
+# (via the LSP `initializationOptions.bundles` jdtls itself defines; real
+# editors fetch it from vscjava/vscode-java-debug's published .vsix, e.g.
+# https://open-vsx.org/api/vscjava/vscode-java-debug/latest, then pass the
+# extracted jar's path to jdtls at startup) and the actual debug session
+# is driven through custom jdtls LSP commands, not a spawned binary
+# speaking DAP over stdio/tcp. vimcode's `[dap]` schema (`binary` +
+# `transport`) models exactly the latter, and vimcode has no bundle-loading
+# support for jdtls (nothing in `extensions.rs`/`lsp.rs` passes `bundles`),
+# so declaring `adapter = "java-debug"` / `binary = "java-debug-adapter"`
+# here was always advertising a debugger this manifest schema cannot
+# actually launch -- `scripts/validate.py`'s string checks passed because
+# the strings resolved, never because anything behind them worked. Per the
+# issue: remove the table rather than add an install path that still
+# wouldn't produce a runnable adapter. `dap_manager.rs`'s own
+# `install_cmd_for_adapter` already returns `None` for "java-debug" with
+# the comment "requires complex multi-step builds -- no automated install".
 
 scripts = []

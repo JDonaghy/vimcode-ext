@@ -1,7 +1,7 @@
 name = "cpp"
 display_name = "C / C++ Language Support"
 description = "LSP and debugger for C and C++"
-version = "1.0.0"
+version = "1.1.0"
 file_extensions = [".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"]
 language_ids = ["c", "cpp"]
 workspace_markers = ["CMakeLists.txt", "Makefile", "compile_commands.json"]
@@ -11,7 +11,22 @@ binary = "clangd"
 install = ""
 install_linux = "sudo apt-get install -y clangd"
 install_macos = "brew install llvm"
-install_windows = ""
+# #16: clangd/clangd publishes a Windows zip (`clangd-windows-{version}.zip`)
+# on every GitHub release, but apt only covers Debian/Ubuntu and Homebrew
+# only covers macOS, with no third package manager for Windows. This can't
+# be a cross-platform `[lsp.acquire]` instead (vimcode#1345's `github-release`
+# kind would then supersede install_linux/install_macos *unconditionally* on
+# every platform, per `ext_install_from_registry`'s resolution order) --
+# clangd/clangd ships no linux-arm64 asset at all, unlike `apt-get install
+# clangd`, so that migration would silently break arm64 Linux (Raspberry Pi,
+# ARM cloud VMs) to fix Windows. A plain install_windows, scoped to the one
+# platform that actually has nothing, carries none of that risk. Mirrors the
+# `cmd /C` + `powershell -NoProfile -Command` shape `dap_manager.rs`'s own
+# built-in `codelldb_install_cmd` uses for Windows, installing into
+# `~/.local/bin` (one of `extra_tool_dirs`'s probed directories on every
+# platform, Windows included) with the Windows ".exe" suffix resolution
+# `resolve_command` already does -- no PATH edit needed.
+install_windows = "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/clangd/clangd/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -like 'clangd-windows-*.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no clangd-windows-*.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-clangd-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'clangd.exe' | Select-Object -First 1; if (-not $exe) { throw 'clangd.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'clangd.exe') -Force\""
 args = []
 
 [dap]

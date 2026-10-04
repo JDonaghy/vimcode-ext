@@ -8,10 +8,15 @@ Language support for Azure Bicep infrastructure-as-code files — diagnostics, c
 ## Prerequisites
 
 - **.NET Runtime** (6.0 or later) must be installed. Download from [dot.net](https://dot.net/download).
-- `curl`, `unzip` must be available (standard on most Linux/macOS systems).
-- `~/.local/bin` must be on your PATH.
+- `curl`, `unzip` must be available (standard on most Linux/macOS systems); Windows installs via `powershell` instead.
+- `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) must be on your PATH.
 
 The LSP server is installed automatically when you install this extension. It downloads the latest `bicep-langserver.zip` from Azure/bicep GitHub releases, extracts it to `~/.local/share/bicep-langserver/`, and creates a `bicep-langserver` wrapper script in `~/.local/bin/`.
+
+On Windows, the wrapper is `%USERPROFILE%\.local\bin\bicep-langserver.cmd`. Unlike the Linux/macOS
+shell script, vimcode's own binary lookup only checks a bare name plus `.exe` in that directory, not
+`.cmd`, so the installer also adds `%USERPROFILE%\.local\bin` to your user `PATH` — **restart
+vimcode once** after the first install for `bicep-langserver` to resolve.
 
 ## Manual Install
 

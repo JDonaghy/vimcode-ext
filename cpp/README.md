@@ -10,14 +10,9 @@ Language support for C and C++ — diagnostics, completions, go-to-definition, d
 
 - **clangd** must be installed (usually bundled with LLVM/Clang).
 
-The LSP server is installed automatically on Debian/Ubuntu. On other systems, install manually:
-
-```
-# macOS
-brew install llvm
-
-# Or download from https://clangd.llvm.org/installation
-```
+The LSP server is installed automatically on Debian/Ubuntu (`apt-get`), macOS (Homebrew), and
+Windows (downloads the latest `clangd-windows-*.zip` release from
+[clangd/clangd](https://github.com/clangd/clangd/releases) into `%USERPROFILE%\.local\bin\clangd.exe`).
 
 For best results, generate a `compile_commands.json` in your project root using CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`) or Bear.
 

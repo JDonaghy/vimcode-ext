@@ -1,7 +1,7 @@
 name = "xml"
 display_name = "XML Language Support"
 description = "LSP formatting and validation for XML"
-version = "1.0.1"
+version = "1.1.0"
 file_extensions = [".xml", ".xsd", ".xsl", ".xslt", ".svg", ".pom"]
 language_ids = ["xml", "xsl"]
 workspace_markers = ["pom.xml"]
@@ -11,7 +11,17 @@ binary = "lemminx"
 install = ""
 install_linux = "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-linux-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-linux-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\""
 install_macos = "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-osx-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-osx-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\""
-install_windows = ""
+# #16: vscode-xml publishes a single `lemminx-win32.zip` (no per-arch
+# variant, unlike `lemminx-linux-aarch_64.zip`/`lemminx-linux-x86_64.zip`)
+# containing one top-level `lemminx-win32.exe`. Not a `[lsp.acquire]`
+# (vimcode#1345 `github-release`) table: that kind's `asset` is one
+# `{os}`/`{arch}` template shared across every platform, and Windows's
+# asset name drops the arch segment Linux/macOS's names have -- there is no
+# single template that produces `lemminx-win32.zip` for Windows and
+# `lemminx-linux-x86_64.zip` for Linux at once. Plain install_windows,
+# mirroring install_linux/install_macos's own GitHub-API-latest-release
+# lookup in PowerShell, sidesteps that limit entirely.
+install_windows = "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -eq 'lemminx-win32.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no lemminx-win32.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-lemminx-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'lemminx-win32.exe' | Select-Object -First 1; if (-not $exe) { throw 'lemminx-win32.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'lemminx.exe') -Force\""
 fallback_binaries = []
 args = []
 

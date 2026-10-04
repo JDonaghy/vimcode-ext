@@ -14,7 +14,7 @@ Provides LSP intelligence for Lua files via [lua-language-server](https://github
 
 **macOS:** Installs via Homebrew (`brew install lua-language-server`).
 
-**Windows:** Manual install required — download from [GitHub releases](https://github.com/LuaLS/lua-language-server/releases) and add to PATH.
+**Windows:** Downloads the latest `win32-x64` release from GitHub into `%USERPROFILE%\.local\bin\lua-language-server.exe`.
 
 ## Configuration
 
