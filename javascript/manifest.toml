@@ -1,14 +1,14 @@
 name = "javascript"
 display_name = "JavaScript / TypeScript Support"
 description = "LSP for JavaScript and TypeScript"
-version = "1.0.0"
+version = "1.0.1"
 file_extensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
 language_ids = ["javascript", "typescript", "javascriptreact", "typescriptreact"]
 workspace_markers = ["package.json", "tsconfig.json"]
 
 [lsp]
 binary = "typescript-language-server"
-install = "npm install -g typescript typescript-language-server"
+install = "npm install -g typescript@5 typescript-language-server"
 args = ["--stdio"]
 dependencies = ["npm"]
 

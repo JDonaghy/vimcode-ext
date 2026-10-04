@@ -110,6 +110,13 @@ FORBIDDEN_IN_INSTALL = ("rm -rf /", ":(){", "mkfs", "dd if=", "> /dev/sd", "curl
 
 INSTALL_KEYS = ("install", "install_linux", "install_macos", "install_windows")
 
+# npm's `typescript` jumped to a native (Go) rewrite at major 7 that ships no
+# `tsserver`, which typescript-language-server requires (#13). An install
+# command that names the bare package, or pins it to a moving tag, resolves
+# to 7 today. `typescript-language-server` is a separate npm token and is
+# unaffected.
+UNPINNED_TYPESCRIPT_TOKENS = ("typescript", "typescript@latest", "typescript@*")
+
 
 def load_manifests(root: pathlib.Path) -> tuple[dict[str, dict], list[str]]:
     """Parse every ``*/manifest.toml``. Returns (by-name, problems)."""
@@ -174,6 +181,12 @@ def check_install_commands(rel: pathlib.Path, data: dict) -> list[str]:
             for bad in FORBIDDEN_IN_INSTALL:
                 if bad in cmd:
                     problems.append(f"{rel}: [{table}].{key} contains {bad!r}")
+            if set(cmd.split()) & set(UNPINNED_TYPESCRIPT_TOKENS):
+                problems.append(
+                    f"{rel}: [{table}].{key} installs 'typescript' without a "
+                    "pinned major version (npm typescript 7 has no tsserver, "
+                    "see #13) -- pin it, e.g. 'typescript@5'"
+                )
     return problems
 
 
