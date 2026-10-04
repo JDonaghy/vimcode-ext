@@ -1,7 +1,7 @@
 name = "lua"
 display_name = "Lua Language Support"
 description = "LSP intelligence for Lua via lua-language-server"
-version = "1.0.1"
+version = "1.1.0"
 file_extensions = [".lua"]
 language_ids = ["lua"]
 workspace_markers = [".luarc.json", ".luarc.jsonc", ".luacheckrc"]
@@ -11,7 +11,16 @@ binary = "lua-language-server"
 install = ""
 install_linux = "mkdir -p ~/.local/share/lua-language-server ~/.local/bin && A=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && curl -fsSL \"$(curl -s https://api.github.com/repos/LuaLS/lua-language-server/releases/latest | grep browser_download_url | grep \"linux-${A}.tar.gz\" | head -1 | cut -d'\"' -f4)\" | tar xz -C ~/.local/share/lua-language-server && ln -sf ~/.local/share/lua-language-server/bin/lua-language-server ~/.local/bin/lua-language-server"
 install_macos = "brew install lua-language-server"
-install_windows = ""
+# #16: LuaLS publishes `lua-language-server-{version}-win32-{x64,ia32}.zip`
+# on every GitHub release, with the binary at `bin/lua-language-server.exe`.
+# Not a `[lsp.acquire]` (vimcode#1345 `github-release`) table: LuaLS's Linux/
+# macOS assets are `.tar.gz` and Windows's is `.zip`, and `AcquireConfig.asset`
+# is one template string shared across every platform's resolution -- it
+# cannot pick a different archive extension per platform, so a single
+# acquire entry can't actually express this release's layout. Plain
+# install_windows, matching install_linux's own GitHub-API-latest-release
+# lookup but in PowerShell, has no such limit.
+install_windows = "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/LuaLS/lua-language-server/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -like '*win32-x64.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no *win32-x64.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-lua-ls-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'lua-language-server.exe' | Select-Object -First 1; if (-not $exe) { throw 'lua-language-server.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'lua-language-server.exe') -Force\""
 fallback_binaries = []
 args = []
 

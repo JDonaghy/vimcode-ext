@@ -16,8 +16,8 @@ VimCode fetches `registry.json` from this repo on startup and caches it locally.
 | `csharp` | C# Language Support | csharp-ls | netcoredbg |
 | `git-insights` | Inline git blame, file history, stash management | — | — |
 | `go` | Go Language Support | gopls | delve |
-| `java` | Java Language Support | jdtls | java-debug |
-| `javascript` | JavaScript / TypeScript Support | typescript-language-server | js-debug |
+| `java` | Java Language Support | jdtls | — |
+| `javascript` | JavaScript / TypeScript Support | typescript-language-server | — |
 | `json` | JSON Language Support | vscode-json-languageserver | — |
 | `markdown` | Markdown Language Support | marksman | — |
 | `php` | PHP Language Support | intelephense | — |

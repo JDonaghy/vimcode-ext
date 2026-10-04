@@ -26,6 +26,13 @@ What it checks
    ``[lsp.acquire]``/``[dap.acquire]`` fallback (#14) -- on a stock Linux box
    with the distro's system node, a root-owned global npm prefix makes
    ``npm install -g`` fail with EACCES for a normal user, every time.
+8. every ``[lsp]``/``[dap]`` table that declares a real binary/adapter
+   resolves to a non-empty install command on every platform (#16) -- a
+   platform field, the generic ``install``, an ``[*.acquire]`` table, or
+   (DAP only) one of the handful of adapters vimcode ships a built-in
+   installer for. A command string merely *resolving*, which is all the
+   #919 conformance gate checks, says nothing about whether it is empty on
+   a platform nobody tried, or whether anything executes it at all.
 
 NOT EXECUTED: install commands are inspected as strings only. Several resolve
 to ``brew install ...`` or ``npm install -g ...``; running them would make this
@@ -148,6 +155,64 @@ NPM_GLOBAL_INSTALL = "npm install -g"
 # unaffected.
 UNPINNED_TYPESCRIPT_TOKENS = ("typescript", "typescript@latest", "typescript@*")
 
+# #16 (2026-10-03 bugbash): cpp/lua/markdown/xml/bicep had no install path at
+# all on some platform, and java/javascript advertised a DAP debugger
+# (`install = ""`, no built-in) that could never install -- a command
+# string *resolving* (the #919 conformance gate's only check) says nothing
+# about whether it's non-empty for every platform, and nothing executes it.
+PLATFORMS = ("linux", "macos", "windows")
+
+# vimcode ships a built-in installer for these DAP adapters by name
+# (`dap_manager.rs`'s `ADAPTER_REGISTRY` + `install_cmd_for_adapter`'s
+# match arms: "codelldb" => ..., "debugpy" => ..., "netcoredbg" => ...,
+# "delve" => ...) that runs even when a manifest's own `[dap]` install
+# fields are all empty on every platform -- that's this registry
+# deliberately deferring to code vimcode already ships, not a gap. There is
+# no such built-in fallback for `js-debug`/`java-debug` (`install_cmd_for_
+# adapter`'s own comment: "require complex multi-step builds -- no
+# automated install") or for any `[lsp]` table, so this is a closed,
+# vimcode-core-defined set rather than something a manifest can declare for
+# itself -- see java/javascript's manifests (#16) for the two names that
+# used to be here and were removed instead.
+BUILTIN_DAP_INSTALLERS = ("codelldb", "debugpy", "netcoredbg", "delve")
+
+
+def check_platform_coverage(rel: pathlib.Path, data: dict) -> list[str]:
+    """Every `[lsp]`/`[dap]` table that declares a real binary/adapter must
+    resolve to a non-empty install command -- a platform-specific field, the
+    generic `install` fallback, or an `[*.acquire]` table -- on every
+    platform (#16), unless vimcode supplies its own built-in installer for
+    that DAP adapter (`BUILTIN_DAP_INSTALLERS`)."""
+    problems: list[str] = []
+    for table in ("lsp", "dap"):
+        section = data.get(table)
+        if not isinstance(section, dict):
+            continue
+        # An absent/inert table (no binary to resolve, or for `[dap]`, no
+        # adapter declared) advertises nothing, so there is nothing to check.
+        if table == "lsp" and not section.get("binary"):
+            continue
+        if table == "dap" and not section.get("adapter"):
+            continue
+        if table == "dap" and section.get("adapter") in BUILTIN_DAP_INSTALLERS:
+            continue
+        if isinstance(section.get("acquire"), dict):
+            continue
+        generic = section.get("install", "")
+        if not isinstance(generic, str):
+            generic = ""
+        for platform in PLATFORMS:
+            key = f"install_{platform}"
+            val = section.get(key, "")
+            if not isinstance(val, str):
+                val = ""
+            if not (val or generic):
+                problems.append(
+                    f"{rel}: [{table}] has no install path for {platform} "
+                    f"(empty {key!r} and generic 'install', no [{table}.acquire]) -- #16"
+                )
+    return problems
+
 
 def load_manifests(root: pathlib.Path) -> tuple[dict[str, dict], list[str]]:
     """Parse every ``*/manifest.toml``. Returns (by-name, problems)."""
@@ -183,6 +248,7 @@ def load_manifests(root: pathlib.Path) -> tuple[dict[str, dict], list[str]]:
 
         problems.extend(check_install_commands(rel, data))
         problems.extend(check_acquire_tables(rel, data))
+        problems.extend(check_platform_coverage(rel, data))
 
     if not by_name and not problems:
         problems.append("no */manifest.toml found -- wrong directory?")

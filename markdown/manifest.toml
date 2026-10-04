@@ -1,7 +1,7 @@
 name = "markdown"
 display_name = "Markdown Language Support"
 description = "LSP navigation and completions for Markdown via marksman"
-version = "1.0.1"
+version = "1.1.0"
 file_extensions = [".md", ".markdown", ".mdx"]
 language_ids = ["markdown"]
 workspace_markers = ["README.md"]
@@ -11,7 +11,15 @@ binary = "marksman"
 install = ""
 install_linux = "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && curl -fsSL \"$(curl -s https://api.github.com/repos/artempyanykh/marksman/releases/latest | grep browser_download_url | grep \"marksman-linux-${A}\" | grep -v musl | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/marksman && chmod +x ~/.local/bin/marksman"
 install_macos = "brew install marksman"
-install_windows = ""
+# #16: marksman publishes `marksman.exe` directly on every GitHub release --
+# not inside a `.zip`/`.tar.gz`. That rules out `[lsp.acquire]`
+# (vimcode#1345's `github-release` kind): `extract_binary_from_archive`
+# only understands `.zip`/`.tar.gz`/`.tgz` and errors "unsupported archive
+# format" on anything else, so pointing acquire at the raw `.exe` would pass
+# `scripts/validate.py` (it only checks the string fields) and then fail
+# for every real Windows user. A plain install_windows, downloading the
+# asset directly with no unpacking, has no such gap.
+install_windows = "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/artempyanykh/marksman/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -eq 'marksman.exe' } | Select-Object -First 1; if (-not $asset) { throw 'no marksman.exe asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile (Join-Path $destDir 'marksman.exe')\""
 fallback_binaries = []
 args = []
 

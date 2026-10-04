@@ -15,4 +15,4 @@ Provides LSP intelligence for Markdown files via [marksman](https://github.com/a
 
 **macOS:** Installs via Homebrew (`brew install marksman`).
 
-**Windows:** Manual install required — download from [GitHub releases](https://github.com/artempyanykh/marksman/releases) and add to PATH.
+**Windows:** Downloads `marksman.exe` directly from the latest GitHub release into `%USERPROFILE%\.local\bin\marksman.exe`.

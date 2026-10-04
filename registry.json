@@ -28,7 +28,7 @@
     "name": "bicep",
     "display_name": "Bicep Language Support",
     "description": "LSP for Azure Bicep infrastructure-as-code files",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "file_extensions": [".bicep", ".bicepparam"],
     "language_ids": ["bicep"],
     "lsp": {
@@ -36,7 +36,7 @@
       "install": "",
       "install_linux": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); if [ \"$DOTNET_MAJOR\" -ge 10 ] 2>/dev/null; then BICEP_TAG=$(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep tag_name | cut -d'\"' -f4); else BICEP_TAG=\"v0.39.26\"; fi; echo \"Installing bicep-langserver $BICEP_TAG (dotnet $DOTNET_MAJOR)\"; curl -sL \"https://github.com/Azure/bicep/releases/download/$BICEP_TAG/bicep-langserver.zip\" -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
       "install_macos": "mkdir -p ~/.local/bin ~/.local/share/bicep-langserver && DOTNET_MAJOR=$(dotnet --version 2>/dev/null | cut -d. -f1); if [ \"$DOTNET_MAJOR\" -ge 10 ] 2>/dev/null; then BICEP_TAG=$(curl -s https://api.github.com/repos/Azure/bicep/releases/latest | grep tag_name | cut -d'\"' -f4); else BICEP_TAG=\"v0.39.26\"; fi; echo \"Installing bicep-langserver $BICEP_TAG (dotnet $DOTNET_MAJOR)\"; curl -sL \"https://github.com/Azure/bicep/releases/download/$BICEP_TAG/bicep-langserver.zip\" -o /tmp/bicep-langserver.zip && unzip -o /tmp/bicep-langserver.zip -d ~/.local/share/bicep-langserver && printf '#!/bin/sh\\nexec dotnet ~/.local/share/bicep-langserver/Bicep.LangServer.dll \"$@\"\\n' > ~/.local/bin/bicep-langserver && chmod +x ~/.local/bin/bicep-langserver && rm /tmp/bicep-langserver.zip",
-      "install_windows": "",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue; if (-not $dotnetCmd) { throw 'bicep-langserver needs the .NET SDK; dotnet not found on PATH' }; $dotnetVer = dotnet --version; $dotnetMajor = [int]($dotnetVer.Split('.')[0]); if ($dotnetMajor -ge 10) { $tag = (Invoke-RestMethod -Uri 'https://api.github.com/repos/Azure/bicep/releases/latest').tag_name } else { $tag = 'v0.39.26' }; $shareDir = Join-Path $env:USERPROFILE '.local\\share\\bicep-langserver'; $binDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $shareDir | Out-Null; New-Item -ItemType Directory -Force -Path $binDir | Out-Null; $zip = Join-Path $env:TEMP 'bicep-langserver.zip'; $url = 'https://github.com/Azure/bicep/releases/download/' + $tag + '/bicep-langserver.zip'; Invoke-WebRequest -Uri $url -OutFile $zip; Expand-Archive -Path $zip -DestinationPath $shareDir -Force; $dll = Join-Path $shareDir 'Bicep.LangServer.dll'; $q = [char]34; $wrapper = Join-Path $binDir 'bicep-langserver.cmd'; Set-Content -Path $wrapper -Value ('@echo off' + [Environment]::NewLine + 'dotnet ' + $q + $dll + $q + ' %*') -Encoding ASCII; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (($userPath -split ';') -notcontains $binDir) { [Environment]::SetEnvironmentVariable('Path', ($userPath + ';' + $binDir), 'User'); Write-Host ('Added ' + $binDir + ' to your user PATH -- restart vimcode for bicep-langserver to be found.') }\"",
       "fallback_binaries": [],
       "args": ["--stdio"],
       "dependencies": ["dotnet"]
@@ -55,7 +55,7 @@
     "name": "cpp",
     "display_name": "C / C++ Language Support",
     "description": "LSP and debugger for C and C++",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "file_extensions": [".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"],
     "language_ids": ["c", "cpp"],
     "lsp": {
@@ -63,7 +63,7 @@
       "install": "",
       "install_linux": "sudo apt-get install -y clangd",
       "install_macos": "brew install llvm",
-      "install_windows": "",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/clangd/clangd/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -like 'clangd-windows-*.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no clangd-windows-*.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-clangd-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'clangd.exe' | Select-Object -First 1; if (-not $exe) { throw 'clangd.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'clangd.exe') -Force\"",
       "fallback_binaries": [],
       "args": []
     },
@@ -155,21 +155,23 @@
     "name": "java",
     "display_name": "Java Language Support",
     "description": "LSP for Java (manual jdtls install required)",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "file_extensions": [".java"],
     "language_ids": ["java"],
     "lsp": {
       "binary": "jdtls",
       "install": "",
+      "install_linux": "mkdir -p ~/.local/share/jdtls ~/.local/bin && curl -fsSL https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz | tar xz -C ~/.local/share/jdtls && chmod +x ~/.local/share/jdtls/bin/jdtls && ln -sf ~/.local/share/jdtls/bin/jdtls ~/.local/bin/jdtls",
       "install_macos": "brew install jdtls",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $shareDir = Join-Path $env:USERPROFILE '.local\\share\\jdtls'; $binDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $shareDir | Out-Null; New-Item -ItemType Directory -Force -Path $binDir | Out-Null; $tar = Join-Path $env:TEMP 'jdt-language-server-latest.tar.gz'; Invoke-WebRequest -Uri 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz' -OutFile $tar; tar -xzf $tar -C $shareDir; $jdtlsBat = Join-Path $shareDir 'bin\\jdtls.bat'; $q = [char]34; $wrapper = Join-Path $binDir 'jdtls.cmd'; Set-Content -Path $wrapper -Value ('@echo off' + [Environment]::NewLine + 'call ' + $q + $jdtlsBat + $q + ' %*') -Encoding ASCII; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (($userPath -split ';') -notcontains $binDir) { [Environment]::SetEnvironmentVariable('Path', ($userPath + ';' + $binDir), 'User'); Write-Host ('Added ' + $binDir + ' to your user PATH -- restart vimcode for jdtls to be found.') }\"",
       "fallback_binaries": [],
       "args": []
     },
     "dap": {
-      "adapter": "java-debug",
-      "binary": "java-debug-adapter",
+      "adapter": "",
+      "binary": "",
       "install": "",
-      "transport": "stdio",
+      "transport": "",
       "args": []
     },
     "scripts": [],
@@ -179,7 +181,7 @@
     "name": "javascript",
     "display_name": "JavaScript / TypeScript Support",
     "description": "LSP for JavaScript and TypeScript",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "file_extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
     "language_ids": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
     "lsp": {
@@ -191,10 +193,10 @@
       "acquire": {"kind": "npm", "package": "typescript-language-server"}
     },
     "dap": {
-      "adapter": "js-debug",
-      "binary": "node",
+      "adapter": "",
+      "binary": "",
       "install": "",
-      "transport": "stdio",
+      "transport": "",
       "args": []
     },
     "scripts": [],
@@ -280,7 +282,7 @@
     "name": "lua",
     "display_name": "Lua Language Support",
     "description": "LSP intelligence for Lua via lua-language-server",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "file_extensions": [".lua"],
     "language_ids": ["lua"],
     "lsp": {
@@ -288,7 +290,7 @@
       "install": "",
       "install_linux": "mkdir -p ~/.local/share/lua-language-server ~/.local/bin && A=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && curl -fsSL \"$(curl -s https://api.github.com/repos/LuaLS/lua-language-server/releases/latest | grep browser_download_url | grep \"linux-${A}.tar.gz\" | head -1 | cut -d'\"' -f4)\" | tar xz -C ~/.local/share/lua-language-server && ln -sf ~/.local/share/lua-language-server/bin/lua-language-server ~/.local/bin/lua-language-server",
       "install_macos": "brew install lua-language-server",
-      "install_windows": "",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/LuaLS/lua-language-server/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -like '*win32-x64.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no *win32-x64.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-lua-ls-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'lua-language-server.exe' | Select-Object -First 1; if (-not $exe) { throw 'lua-language-server.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'lua-language-server.exe') -Force\"",
       "fallback_binaries": [],
       "args": []
     },
@@ -311,7 +313,7 @@
     "name": "markdown",
     "display_name": "Markdown Language Support",
     "description": "LSP navigation and completions for Markdown via marksman",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "file_extensions": [".md", ".markdown", ".mdx"],
     "language_ids": ["markdown"],
     "lsp": {
@@ -319,7 +321,7 @@
       "install": "",
       "install_linux": "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && curl -fsSL \"$(curl -s https://api.github.com/repos/artempyanykh/marksman/releases/latest | grep browser_download_url | grep \"marksman-linux-${A}\" | grep -v musl | head -1 | cut -d'\"' -f4)\" -o ~/.local/bin/marksman && chmod +x ~/.local/bin/marksman",
       "install_macos": "brew install marksman",
-      "install_windows": "",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/artempyanykh/marksman/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -eq 'marksman.exe' } | Select-Object -First 1; if (-not $asset) { throw 'no marksman.exe asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile (Join-Path $destDir 'marksman.exe')\"",
       "fallback_binaries": [],
       "args": []
     },
@@ -471,7 +473,7 @@
     "name": "xml",
     "display_name": "XML Language Support",
     "description": "LSP formatting and validation for XML",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "file_extensions": [".xml", ".xsd", ".xsl", ".xslt", ".svg", ".pom"],
     "language_ids": ["xml", "xsl"],
     "lsp": {
@@ -479,7 +481,7 @@
       "install": "",
       "install_linux": "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-linux-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-linux-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\"",
       "install_macos": "mkdir -p ~/.local/bin && A=$(uname -m | sed 's/aarch64/aarch_64/;s/arm64/aarch_64/') && D=$(mktemp -d) && curl -fsSL -o \"$D/lemminx.zip\" \"$(curl -s https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest | grep browser_download_url | grep \"lemminx-osx-${A}.zip\" | head -1 | cut -d'\"' -f4)\" && unzip -o \"$D/lemminx.zip\" -d \"$D\" && mv \"$D/lemminx-osx-${A}\" ~/.local/bin/lemminx && chmod +x ~/.local/bin/lemminx && rm -rf \"$D\"",
-      "install_windows": "",
+      "install_windows": "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/redhat-developer/vscode-xml/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -eq 'lemminx-win32.zip' } | Select-Object -First 1; if (-not $asset) { throw 'no lemminx-win32.zip asset in latest release' }; $destDir = Join-Path $env:USERPROFILE '.local\\bin'; New-Item -ItemType Directory -Force -Path $destDir | Out-Null; $zip = Join-Path $env:TEMP $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip; $extractDir = Join-Path $env:TEMP 'vimcode-lemminx-extract'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Recurse -Filter 'lemminx-win32.exe' | Select-Object -First 1; if (-not $exe) { throw 'lemminx-win32.exe not found in downloaded archive' }; Copy-Item $exe.FullName (Join-Path $destDir 'lemminx.exe') -Force\"",
       "fallback_binaries": [],
       "args": []
     },
