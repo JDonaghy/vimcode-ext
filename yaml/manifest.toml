@@ -14,3 +14,14 @@ args = ["--stdio"]
 dependencies = ["npm"]
 
 scripts = []
+
+# vimcode >= 0.14.0 (#1346): installs yaml-language-server via `npm install
+# --prefix` into a private, vimcode-managed prefix -- no sudo, no global npm
+# prefix (the #14 bug: a stock Linux box's system node has a root-owned
+# global prefix, so `npm install -g` dies with EACCES for a normal user).
+# Older vimcode ignores an [lsp.acquire] table it doesn't understand (serde
+# `default`), so `install` above stays as the tier-3 fallback until the
+# minimum supported vimcode has acquire.
+[lsp.acquire]
+kind = "npm"
+package = "yaml-language-server"

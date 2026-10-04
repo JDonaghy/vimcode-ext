@@ -20,8 +20,12 @@ What it checks
    ``scripts``/``workspace_markers`` for every entry even where the manifest
    omits them, so a naive dict comparison reports false drift);
 5. install commands, where declared, are non-empty and not obviously unsafe.
-6. an ``[lsp.acquire]`` / ``[dap.acquire]`` table (#1345), where declared,
-   has a valid ``kind`` and that kind's required keys.
+6. an ``[lsp.acquire]`` / ``[dap.acquire]`` table (#1345/#1346), where
+   declared, has a valid ``kind`` and that kind's required keys.
+7. an install command that resolves to ``npm install -g`` has an
+   ``[lsp.acquire]``/``[dap.acquire]`` fallback (#14) -- on a stock Linux box
+   with the distro's system node, a root-owned global npm prefix makes
+   ``npm install -g`` fail with EACCES for a normal user, every time.
 
 NOT EXECUTED: install commands are inspected as strings only. Several resolve
 to ``brew install ...`` or ``npm install -g ...``; running them would make this
@@ -90,18 +94,34 @@ DAP_FIELDS: dict[str, object] = {
 # manifest, not expanded with the Rust struct's per-kind field defaults (there
 # is no established "always fully spelled out" convention for it the way
 # TOP_FIELDS has for the extension-level table).
-ACQUIRE_KINDS = ("hashicorp-release", "github-release", "url-template")
+#
+# `npm` (#1346/#14) is the only package-manager kind opted in here -- it's
+# the only one any manifest in this registry uses today. `pip`/`go`/`cargo`/
+# `dotnet-tool` (also #1346) are real vimcode kinds but unused in this
+# registry; add them here, deliberately, the day a manifest needs one.
+ACQUIRE_KINDS = ("hashicorp-release", "github-release", "url-template", "npm")
 
 # Non-empty keys each `kind` requires, matching the `BadConfig` errors
 # `tool_acquire.rs`'s `resolve_hashicorp_release` / `resolve_github_release` /
-# `resolve_url_template` raise at runtime for the same thing.
+# `resolve_url_template` / `package_manager_argv` raise at runtime for the
+# same thing.
 ACQUIRE_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "hashicorp-release": ("product",),
     "github-release": ("repo", "asset"),
     "url-template": ("url",),
+    "npm": ("package",),
 }
 
-ACQUIRE_STR_KEYS = ("kind", "product", "repo", "asset", "url", "version", "binary_path")
+ACQUIRE_STR_KEYS = (
+    "kind",
+    "product",
+    "repo",
+    "asset",
+    "url",
+    "package",
+    "version",
+    "binary_path",
+)
 ACQUIRE_DICT_KEYS = ("os_map", "arch_map")
 
 # Substrings that have no business in a declarative install command. Not a
@@ -109,6 +129,17 @@ ACQUIRE_DICT_KEYS = ("os_map", "arch_map")
 FORBIDDEN_IN_INSTALL = ("rm -rf /", ":(){", "mkfs", "dd if=", "> /dev/sd", "curl | sh", "curl|sh")
 
 INSTALL_KEYS = ("install", "install_linux", "install_macos", "install_windows")
+
+# #14: on a stock Linux box, the distro's system node has a global prefix
+# (typically `/usr/lib/node_modules`) owned by root -- `npm install -g`
+# fails with EACCES for a normal user every time, unless node itself came
+# from Homebrew/nvm/fnm (a private, user-owned prefix). An install command
+# built on this string must not be a manifest's only install path; it needs
+# an `[lsp.acquire]`/`[dap.acquire]` kind="npm" table (installs into a
+# private prefix under vimcode's managed tools dir, no sudo, no global
+# prefix) ahead of it. The bare string is still fine as the tier-3 fallback
+# for vimcode older than #1346's `[lsp.acquire]` kind="npm" support.
+NPM_GLOBAL_INSTALL = "npm install -g"
 
 # npm's `typescript` jumped to a native (Go) rewrite at major 7 that ships no
 # `tsserver`, which typescript-language-server requires (#13). An install
@@ -186,6 +217,25 @@ def check_install_commands(rel: pathlib.Path, data: dict) -> list[str]:
                     f"{rel}: [{table}].{key} installs 'typescript' without a "
                     "pinned major version (npm typescript 7 has no tsserver, "
                     "see #13) -- pin it, e.g. 'typescript@5'"
+                )
+
+        # #14: `npm install -g` must not be the only install path -- it
+        # needs an `[{table}.acquire]` kind="npm" table (installed into a
+        # private, vimcode-managed prefix) ahead of it, with the global
+        # string kept only as the tier-3 fallback for pre-#1346 vimcode.
+        uses_npm_global = any(
+            isinstance(section.get(key), str) and NPM_GLOBAL_INSTALL in section[key]
+            for key in INSTALL_KEYS
+        )
+        if uses_npm_global:
+            acquire = section.get("acquire")
+            has_npm_acquire = isinstance(acquire, dict) and acquire.get("kind") == "npm"
+            if not has_npm_acquire:
+                problems.append(
+                    f"{rel}: [{table}] installs via {NPM_GLOBAL_INSTALL!r} with no "
+                    f"[{table}.acquire] kind=\"npm\" fallback (#14) -- this fails "
+                    "with EACCES for a normal user on a stock Linux box's system "
+                    "node"
                 )
     return problems
 

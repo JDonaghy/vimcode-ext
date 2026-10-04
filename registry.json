@@ -11,7 +11,8 @@
       "install": "npm install -g bash-language-server",
       "fallback_binaries": [],
       "args": ["start"],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "bash-language-server"}
     },
     "dap": {
       "adapter": "",
@@ -183,7 +184,8 @@
       "install": "npm install -g typescript@5 typescript-language-server",
       "fallback_binaries": [],
       "args": ["--stdio"],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "typescript-language-server"}
     },
     "dap": {
       "adapter": "js-debug",
@@ -258,7 +260,8 @@
       "install": "npm install -g vscode-langservers-extracted",
       "fallback_binaries": ["vscode-json-language-server"],
       "args": ["--stdio"],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "vscode-langservers-extracted", "binary_path": "vscode-json-language-server"}
     },
     "dap": {
       "adapter": "",
@@ -339,7 +342,8 @@
       "install": "npm install -g intelephense",
       "fallback_binaries": [],
       "args": [],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "intelephense"}
     },
     "dap": {
       "adapter": "",
@@ -363,7 +367,8 @@
       "install": "npm install -g pyright",
       "fallback_binaries": ["basedpyright-langserver", "pylsp", "jedi-language-server"],
       "args": ["--stdio"],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "pyright"}
     },
     "dap": {
       "adapter": "debugpy",
@@ -497,7 +502,8 @@
       "install": "npm install -g yaml-language-server",
       "fallback_binaries": [],
       "args": ["--stdio"],
-      "dependencies": ["npm"]
+      "dependencies": ["npm"],
+      "acquire": {"kind": "npm", "package": "yaml-language-server"}
     },
     "dap": {
       "adapter": "",

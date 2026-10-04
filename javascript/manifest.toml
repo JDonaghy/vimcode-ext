@@ -12,6 +12,23 @@ install = "npm install -g typescript@5 typescript-language-server"
 args = ["--stdio"]
 dependencies = ["npm"]
 
+# vimcode >= 0.14.0 (#1346): installs typescript-language-server via `npm
+# install --prefix` into a private, vimcode-managed prefix -- no sudo, no
+# global npm prefix (the #14 bug: a stock Linux box's system node has a
+# root-owned global prefix, so `npm install -g` dies with EACCES for a
+# normal user). `[lsp.acquire]` takes one `package` only (#1346's schema),
+# so unlike `install` above it cannot also pin a global `typescript@5` --
+# this tier relies on the project's own `typescript` devDependency, which
+# is how nearly every real TS project is set up, and is unaffected by npm
+# `typescript` 7's loss of `tsserver` (#13) since nothing here installs a
+# bare, unpinned `typescript`. Older vimcode ignores an [lsp.acquire] table
+# it doesn't understand (serde `default`), so `install` above (which does
+# pin a fallback global typescript) stays as the tier-3 fallback until the
+# minimum supported vimcode has acquire.
+[lsp.acquire]
+kind = "npm"
+package = "typescript-language-server"
+
 [dap]
 adapter = "js-debug"
 binary = "node"
