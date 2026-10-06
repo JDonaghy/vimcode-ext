@@ -31,7 +31,7 @@ VimCode fetches `registry.json` from this repo on startup and caches it locally.
 ## Contributing a New Extension
 
 1. Create a directory with your extension name (lowercase, hyphens ok)
-2. Add a `manifest.toml` — see [EXTENSIONS.md](EXTENSIONS.md) for the full schema
+2. Add a `manifest.toml` — see [vimcode's EXTENSIONS.md](https://github.com/JDonaghy/vimcode/blob/develop/EXTENSIONS.md) for the full schema and the Lua API
 3. Add any Lua scripts referenced in the manifest's `scripts` field
 4. Add a `README.md` describing your extension
 5. Add an entry to `registry.json`
@@ -54,7 +54,7 @@ cp -r my-extension ~/.config/vimcode/extensions/my-extension
 
 ```
 ├── registry.json          # Extension manifest index (fetched by VimCode)
-├── EXTENSIONS.md          # Extension development guide
+├── EXTENSIONS.md          # Pointer to vimcode's EXTENSIONS.md (the canonical guide)
 ├── bash/                  # One directory per extension
 │   ├── manifest.toml
 │   └── README.md
