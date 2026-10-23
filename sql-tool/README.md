@@ -2,7 +2,7 @@
 
 SQLite-backed query runner with an async results grid. Open a `.db` file, write
 SQL in a normal editor buffer (full vim motions, undo, syntax highlighting),
-run it, and see the rows in a table view beside your query.
+run it, and see the rows in a results tab.
 
 **Requires**: the `sqlite3` CLI on PATH. Every query runs it with `-json`
 through `vimcode.loop.spawn` — a real child process, never a blocking shell
@@ -14,31 +14,33 @@ call — so the editor never freezes while a query is in flight.
 |---|---|
 | `:SqlOpen <path.db>` | Connect to a sqlite3 database file. Remembered in recents. |
 | `:SqlPickRecent` | Fuzzy-pick a previously opened database and switch to it. |
-| `:SqlRun` | Run the whole query buffer. With a visual range (`:'<,'>SqlRun`), runs just the selected lines. |
+| `:SqlRun` | Run the whole query buffer, or just lines `<start>,<end>` when given a hand-typed numeric range (e.g. `:SqlRun 3,7`). |
 
 ## Keymaps
 
 | Mode | Key | Effect |
 |---|---|---|
 | Normal | `<leader>r` | Run the whole query buffer. |
-| Visual | `<leader>r` | Run the selected lines only. |
+
+There is no visual-mode binding: see "Known limitations" below.
 
 ## How it works
 
-- `:SqlOpen` opens (or re-focuses) a scratch buffer named `sql-tool
-  query.sql` with `filetype = "sql"`, so VimCode's native SQL syntax
-  highlighting and vim motions apply — there is no custom query widget.
-  The database path is tracked separately from the buffer, so switching
-  databases with `:SqlOpen`/`:SqlPickRecent` does not touch your in-progress
-  query.
+- `:SqlOpen` creates a scratch buffer named `sql-tool query.sql` with
+  `filetype = "sql"`, so VimCode's native SQL syntax highlighting and vim
+  motions apply — there is no custom query widget. This only happens on
+  the *first* successful connection in a session; later `:SqlOpen` /
+  `:SqlPickRecent` calls change which database `:SqlRun` targets without
+  touching the buffer, so your in-progress query survives switching
+  databases.
 - Recently opened databases are persisted with `vimcode.storage`, so they
   survive restarts. The list holds the 10 most recent, most-recent first,
   deduplicated by path.
-- `:SqlRun` reads the buffer (or selection), spawns
+- `:SqlRun` reads the buffer (or a hand-typed numeric range), spawns
   `sqlite3 <db> -json '<query>'`, and shows the parsed rows in a results
-  view (`vimcode.ui.register_view`, `kind = "table"`) opened beside the
-  query buffer in a vertical split. Column names come from the union of
-  keys across every returned row (sorted, since `sqlite3 -json` does not
+  view (`vimcode.ui.register_view`, `kind = "table"`) opened as its own
+  tab, reused across runs. Column names come from the union of keys
+  across every returned row (sorted, since `sqlite3 -json` does not
   guarantee key order and a query can return rows with different NULL
   columns present/absent).
 - A non-zero `sqlite3` exit, a process that fails to even start, or output
@@ -57,21 +59,26 @@ call — so the editor never freezes while a query is in flight.
   non-editable; editing query results back into the database is explicitly
   out of scope for this extension (tracked as a separate, unfiled
   follow-on).
-- **The side-by-side split is a best-effort ordering of two documented but
-  separately-queued primitives.** Opening the results pane runs
-  `vimcode.command_run("vsplit")` (queued, applied after the current
-  callback returns) followed by `vimcode.ui.open_view` inside
-  `vimcode.schedule` (deferred to the next idle tick, after the queued
-  split lands). This is the ordering `EXTENSIONS.md` supports, but it has
-  not been exercised against a live VimCode instance in this environment —
-  see "Manual verification" below.
-- **Reopening an already-open query buffer's seed content is unconfirmed.**
-  `:SqlOpen`/`:SqlPickRecent` call `vimcode.buf.open_scratch` with a one-line
-  seed comment every time. `EXTENSIONS.md` does not say whether re-opening
-  an existing scratch buffer by name replaces its content or preserves it
-  and ignores the `content` argument. If it replaces, switching databases
-  while mid-query will discard unsaved SQL — worth confirming against a
-  real VimCode build.
+- **The results pane cannot be a side-by-side split.** `vimcode.ui.open_view`
+  always opens a `kind = "table"` plugin view as a brand-new tab; there is
+  no engine primitive that can place one as a sibling split of the query
+  buffer. The results pane is therefore its own tab, reused across
+  `:SqlRun` calls rather than duplicated. A split-capable plugin-view API
+  would need to land in `vimcode` itself for this to change.
+- **There is no visual-mode `:SqlRun`.** `:'<,'>SqlRun` (vim-native visual
+  range syntax) can never dispatch to a plugin command — any `'`-prefixed
+  command name is routed to a dispatcher that only recognizes built-in
+  commands. There is also no plugin-facing API that exposes the `'<`/`'>`
+  visual-selection marks a keymap callback could read instead. Use
+  `:SqlRun <start>,<end>` with hand-typed line numbers to run a subset of
+  the buffer. Both gaps would need new bindings in `vimcode` to fix.
+- **The query buffer is only (re)created on the first successful
+  `:SqlOpen`/`:SqlPickRecent` in a session.** `vimcode.buf.open_scratch`
+  always creates a brand-new buffer and replaces the active window's
+  buffer — there is no "re-focus an existing scratch buffer by name" mode
+  in the engine. Calling it again on every database switch would silently
+  discard whatever query you were mid-typing, so later switches change
+  only which database `:SqlRun` targets, not the buffer.
 
 ## Manual verification (no automated Lua runtime in this repo or sandbox)
 
@@ -94,13 +101,15 @@ To verify by hand in a real VimCode build:
    INSERT INTO t VALUES (1, 'x'), (2, 'y');"`.
 3. `:SqlOpen /tmp/smoke.db` — expect a status-bar message, and a `.sql`
    scratch buffer with SQL syntax highlighting.
-4. Type `SELECT * FROM t;` and press `<leader>r` — expect a vertical split
-   to appear with a table showing columns `a`, `b` and two rows.
+4. Type `SELECT * FROM t;` and press `<leader>r` — expect a new tab to open
+   with a table showing columns `a`, `b` and two rows.
 5. Change the query to `SELECT * FROM nosuchtable;` and run again — expect
-   the results pane to show sqlite3's error text instead of silently
-   showing stale or empty rows, and the query buffer to stay responsive
-   (keep typing in it immediately).
-6. Run `:SqlOpen /tmp/other.db` against a second fixture file, then
-   `:SqlPickRecent` — expect both paths in the picker, most recent first.
-   Restart VimCode and run `:SqlPickRecent` again — expect the same two
-   entries to still be there.
+   the same results tab to update in place (not a second tab) showing
+   sqlite3's error text instead of silently showing stale or empty rows,
+   and the query buffer to stay responsive (keep typing in it immediately).
+6. Run `:SqlOpen /tmp/other.db` against a second fixture file — expect the
+   status message to report the new connection and the query buffer's text
+   to be left exactly as you last edited it (not reset to the seed comment).
+   Then run `:SqlPickRecent` — expect both paths in the picker, most recent
+   first. Restart VimCode and run `:SqlPickRecent` again — expect the same
+   two entries to still be there.
