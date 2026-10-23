@@ -443,6 +443,29 @@
     "workspace_markers": ["Cargo.toml"]
   },
   {
+    "name": "sql-tool",
+    "display_name": "SQL Tool",
+    "description": "SQLite-backed query runner with an async results grid",
+    "version": "1.0.0",
+    "file_extensions": [],
+    "language_ids": [],
+    "lsp": {
+      "binary": "",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": ["sql_tool.lua"],
+    "workspace_markers": []
+  },
+  {
     "name": "terraform",
     "display_name": "Terraform Language Support",
     "description": "LSP for HashiCorp Terraform and OpenTofu",
