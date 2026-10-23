@@ -24,6 +24,7 @@ VimCode fetches `registry.json` from this repo on startup and caches it locally.
 | `python` | Python Language Support | pyright | debugpy |
 | `ruby` | Ruby Language Support | ruby-lsp | — |
 | `rust` | Rust Language Support | rust-analyzer | codelldb |
+| `sql-tool` | SQLite-backed query runner with an async results grid | — | — |
 | `terraform` | Terraform Language Support | terraform-ls | — |
 | `xml` | XML Language Support | lemminx | — |
 | `yaml` | YAML Language Support | yaml-language-server | — |
