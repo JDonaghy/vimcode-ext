@@ -8,6 +8,19 @@ run it, and see the rows in a results tab.
 through `vimcode.loop.spawn` — a real child process, never a blocking shell
 call — so the editor never freezes while a query is in flight.
 
+## Database panel
+
+Once you connect, a **SQL** panel appears in the activity-bar sidebar listing
+the database's **Tables** and **Views**. Press `Enter` on an object (or
+right-click it) to run `SELECT * FROM <object> LIMIT 1000` into the results
+grid; right-click also offers "Copy name". Press `r` to refresh the object
+list. The panel is engine-agnostic — each adapter supplies its own catalog
+query and `SELECT TOP N` dialect (see "Adapters" below).
+
+Column-level children (expand a table to see its columns) are a planned
+follow-on. Right-click currently opens the actions as a picker rather than a
+native anchored menu — that needs core support in VimCode (JDonaghy/vimcode#2022).
+
 ## Commands
 
 | Command | Effect |
@@ -49,6 +62,20 @@ There is no visual-mode binding: see "Known limitations" below.
   `vimcode.message`, instead of failing silently. The editor stays
   responsive throughout — a failing or slow query never blocks typing in
   another buffer.
+
+## Adapters
+
+Everything engine-specific lives behind a small **adapter** table in
+`sql_tool.lua`, so the results grid, sorting, recents and the object panel stay
+database-agnostic. An adapter provides: the CLI `binary`; `open(target)` to
+validate a connection; `query_args`/`parse` to run a query and shape its
+output; and `objects_args`/`parse_objects`/`top_n_sql` for the panel's catalog
+and "select top N" dialect. **SQLite is the only adapter today** (it needs the
+`sqlite3` CLI). Adding Postgres (`psql`) or MySQL (`mysql`) is a new adapter
+entry plus its install command — no changes to the UI code. Note there is no
+secrets store in VimCode yet (`vimcode.storage` is plaintext), so a server
+adapter should prompt for the password at connect time or defer to the engine's
+own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
 
 ## Known limitations
 

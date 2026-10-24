@@ -10,6 +10,11 @@
 --                      columns sort numerically), ascending or `desc`
 -- <leader>r           normal mode: runs the whole buffer
 --
+-- There is also a "SQL" activity-bar panel: once connected it lists the
+-- database's Tables and Views; Enter (or right-click) on one runs a
+-- "select top N rows" into the results grid. See the "Database panel" block
+-- at the end of this file.
+--
 -- Requires the `sqlite3` CLI on PATH. Every `sqlite3` invocation runs via
 -- `vimcode.loop.spawn`, never a blocking shell call, so the editor stays
 -- responsive while a query is in flight.
@@ -37,6 +42,10 @@ local rows = {}
 local row_values = {}
 local results_pane_opened = false
 local query_buffer_opened = false
+-- Sidebar object-panel refresh, defined in the "Database panel" block at the
+-- end of the file. Forward-declared so open_db can trigger a refresh the
+-- moment a connection opens (assigned at load, called only at runtime).
+local refresh_objects
 
 -- `vimcode.storage.*` is the one API documented to work at any point,
 -- including top-level load, so recents are loaded once here.
@@ -187,6 +196,42 @@ local sqlite_adapter = {
     end
     return rows_from_json(decoded)
   end,
+
+  -- Argv that lists the connection's user tables and views (for the sidebar
+  -- object panel). sqlite_master is SQLite's catalog; a Postgres adapter would
+  -- query information_schema instead.
+  objects_args = function(conn)
+    return {
+      conn.path, "-json", "--",
+      "SELECT name, type FROM sqlite_master "
+        .. "WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' "
+        .. "ORDER BY type, name;",
+    }
+  end,
+
+  -- Parse that catalog output into a normalized { {name=, type=}, ... } list,
+  -- or (nil, err). `type` is "table" or "view".
+  parse_objects = function(stdout)
+    local ok, decoded = pcall(vimcode.json.decode, stdout == "" and "[]" or stdout)
+    if not ok then
+      return nil, "could not parse sqlite3 catalog output: " .. tostring(decoded)
+    end
+    local objs = {}
+    if type(decoded) == "table" then
+      for _, row in ipairs(decoded) do
+        if type(row) == "table" and type(row.name) == "string" then
+          objs[#objs + 1] = { name = row.name, type = row.type }
+        end
+      end
+    end
+    return objs
+  end,
+
+  -- The dialect's "first N rows of a table" query. SQLite uses double-quoted
+  -- identifiers and LIMIT (Postgres too; SQL Server would be TOP, etc.).
+  top_n_sql = function(name, n)
+    return 'SELECT * FROM "' .. name:gsub('"', '""') .. '" LIMIT ' .. n .. ";"
+  end,
 }
 
 local adapters = { [sqlite_adapter.kind] = sqlite_adapter }
@@ -324,6 +369,7 @@ local function open_db(target)
     })
   end
   vimcode.message("sql-tool: connected to " .. current_adapter.label(conn))
+  refresh_objects()
 end
 
 vimcode.command("SqlOpen", function(args)
@@ -534,3 +580,126 @@ vimcode.ui.register_view(RESULTS_VIEW, {
     }
   end,
 })
+
+-- ===========================================================================
+-- Database panel (activity-bar sidebar)
+--
+-- A tree of the connected database's objects: a "Tables" section and a "Views"
+-- section. Selecting (Enter) an object, or right-clicking it, runs "Select top
+-- N rows" into the results grid. The tree is (re)built by spawning the
+-- adapter's catalog query through the same non-blocking vimcode.loop.spawn
+-- path queries use, so a large catalog never freezes the editor.
+--
+-- Column-level children (lazy-loaded when a table node is expanded) are a
+-- planned follow-on; today each object is a flat row in its section. A native
+-- anchored right-click menu is not available to panels yet (tracked upstream
+-- as vimcode#2022), so right-click presents the actions as a picker.
+-- ===========================================================================
+
+local PANEL = "sql_tool"
+local TOP_N = 1000
+
+vimcode.panel.register(PANEL, {
+  title = "SQL",
+  icon = "\u{f1c0}", -- database glyph
+  sections = { "Tables", "Views" },
+})
+
+vimcode.panel.set_help(PANEL, {
+  { "Enter", "Select top " .. TOP_N .. " rows" },
+  { "Right-click", "Actions (select top N, copy name)" },
+  { "r", "Refresh object list" },
+  { "q/Esc", "Close panel" },
+})
+
+local function object_items(objs, want_type, icon)
+  local items = {}
+  for _, o in ipairs(objs) do
+    if o.type == want_type then
+      items[#items + 1] = { text = o.name, id = o.name, icon = icon }
+    end
+  end
+  return items
+end
+
+-- Assigns the forward-declared upvalue (no `local`), so open_db above can call
+-- it. Clears the tree when disconnected; otherwise spawns the adapter's
+-- catalog query and fills the Tables/Views sections from the parsed result.
+function refresh_objects()
+  if current_conn == nil then
+    vimcode.panel.set_items(PANEL, "Tables", {})
+    vimcode.panel.set_items(PANEL, "Views", {})
+    return
+  end
+  local adapter = current_adapter
+  local out_chunks = {}
+  pcall(vimcode.loop.spawn, adapter.binary, adapter.objects_args(current_conn), {
+    on_stdout = function(chunk)
+      out_chunks[#out_chunks + 1] = chunk
+    end,
+    on_exit = function(code, _)
+      if code ~= 0 then
+        return
+      end
+      local objs = adapter.parse_objects(table.concat(out_chunks))
+      if objs == nil then
+        return
+      end
+      vimcode.panel.set_items(PANEL, "Tables", object_items(objs, "table", "\u{f0ce}"))
+      vimcode.panel.set_items(PANEL, "Views", object_items(objs, "view", "\u{f06e}"))
+    end,
+  })
+end
+
+-- Run the default action (select the first N rows) for an object by name.
+local function select_top_n(name)
+  run_query(current_adapter.top_n_sql(name, TOP_N))
+end
+
+vimcode.on("panel_focus", function(name)
+  if name == PANEL then
+    refresh_objects()
+  end
+end)
+
+vimcode.on("panel_select", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL or e.id == "" then
+    return
+  end
+  select_top_n(e.id)
+end)
+
+vimcode.on("panel_action", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL then
+    return
+  end
+  if e.key == "r" then
+    refresh_objects()
+    vimcode.message("sql-tool: object list refreshed")
+  end
+end)
+
+vimcode.on("panel_context_menu", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL or e.id == "" then
+    return
+  end
+  local name = e.id
+  vimcode.picker.open({
+    title = name,
+    items = {
+      { display = "Select top " .. TOP_N .. " rows", data = "top" },
+      { display = "Copy name", data = "copy" },
+    },
+    on_select = function(action)
+      if action == "top" then
+        select_top_n(name)
+      elseif action == "copy" then
+        vimcode.state.set_register("+", name, false)
+        vimcode.message("sql-tool: copied " .. name)
+      end
+    end,
+  })
+end)

@@ -257,6 +257,11 @@ local function make_mock(storage_backing)
     refresh_calls = {},
     command_run_calls = {},
     last_picker = nil,
+    panels = {},
+    panel_items = {},
+    panel_help = {},
+    handlers = {},
+    registers = {},
   }
 
   mock.vimcode = {
@@ -277,6 +282,48 @@ local function make_mock(storage_backing)
     command_run = function(cmd)
       mock.command_run_calls[#mock.command_run_calls + 1] = cmd
     end,
+
+    -- Event registration: store the handler so the test can fire it directly.
+    on = function(event, fn)
+      mock.handlers[event] = fn
+    end,
+
+    -- Sidebar panel surface (vimcode.panel.*). Enough to drive the object
+    -- panel: register, help, per-section item lists, and parse_event, which
+    -- splits the "panel|section|id|key|index" event argument the engine sends.
+    panel = {
+      register = function(name, def)
+        mock.panels[name] = def
+        mock.panel_items[name] = mock.panel_items[name] or {}
+      end,
+      set_help = function(name, help)
+        mock.panel_help[name] = help
+      end,
+      set_items = function(name, section, items)
+        mock.panel_items[name] = mock.panel_items[name] or {}
+        mock.panel_items[name][section] = items
+      end,
+      set_hover = function() end,
+      parse_event = function(arg)
+        local parts = {}
+        for field in (arg .. "|"):gmatch("([^|]*)|") do
+          parts[#parts + 1] = field
+        end
+        return {
+          panel = parts[1] or "",
+          section = parts[2] or "",
+          id = parts[3] or "",
+          key = parts[4] or "",
+          index = tonumber(parts[5]) or 0,
+        }
+      end,
+    },
+
+    state = {
+      set_register = function(reg, text, _)
+        mock.registers[reg] = text
+      end,
+    },
 
     schedule = function(fn)
       -- Synchronous test harness: run on the "next idle tick" right now.
@@ -598,6 +645,34 @@ ok(mock4.messages[#mock4.messages]:match("no such column"), "SqlSort on an unkno
 local after_bad = mock4.views.sql_tool_results.render(nil)
 equals(after_bad.rows[1].cells[1], "k", "a failed sort leaves the existing order untouched")
 ok(#mock4.messages > msgs_before, "a failed sort still emits a message")
+
+-- ---------------------------------------------------------------------------
+-- Session 5: the database object panel. The panel is registered at load;
+-- connecting populates Tables/Views from the catalog query; Enter and
+-- right-click on a table run "Select top N" / expose actions.
+-- ---------------------------------------------------------------------------
+
+local mock5 = make_mock({})
+load_extension(mock5)
+ok(mock5.panels["sql_tool"] ~= nil, "database panel registered at load")
+
+mock5.commands.SqlOpen(fixture_path) -- fixture has one table `t`, no views
+local tables_section = mock5.panel_items["sql_tool"] and mock5.panel_items["sql_tool"]["Tables"]
+ok(tables_section ~= nil and #tables_section == 1, "connecting populates the Tables section (one table)")
+equals(tables_section[1].text, "t", "the fixture table 't' is listed in the panel")
+equals(#(mock5.panel_items["sql_tool"]["Views"] or {}), 0, "no views listed for the fixture")
+
+-- Enter on the table runs SELECT * ... LIMIT N into the results grid.
+mock5.handlers["panel_select"]("sql_tool|Tables|t||0")
+local panel_sel = mock5.views.sql_tool_results.render(nil)
+equals(panel_sel.kind, "table", "selecting a panel table runs a query into the results grid")
+equals(#panel_sel.rows, 2, "select-top-N returned the fixture's two rows")
+
+-- Right-click opens an actions picker; "Copy name" copies the object name.
+mock5.handlers["panel_context_menu"]("sql_tool|Tables|t||0")
+ok(mock5.last_picker ~= nil and #mock5.last_picker.items == 2, "right-click opens a two-action picker")
+mock5.last_picker.on_select("copy")
+equals(mock5.registers["+"], "t", "the copy-name action copies the object name to the clipboard")
 
 -- ---------------------------------------------------------------------------
 
