@@ -302,30 +302,22 @@ local adapter_list = { sqlite_adapter }
 -- dialog's engine dropdown sets current_adapter per connection.
 current_adapter = sqlite_adapter
 
--- Open the results view once, the first time a query runs, as a horizontal
--- split *below* the query buffer (query on top, grid below -- the usual SQL
--- IDE layout). This keeps the grid on screen while you edit and re-run, so
--- every run updates a pane you can actually see.
+-- Open the results view once, the first time a query runs, as its own editor
+-- tab. Reused across runs via the guard below (open_view always opens a NEW
+-- tab, so re-opening would pile up duplicates).
 --
--- This matters: `open_view` always opens a brand-new tab/window (there is no
--- "focus the existing one" mode), so a plain tab would surface only on the
--- FIRST run -- the tab opens and comes to the front. On later runs the guard
--- below skips re-opening, and the refresh lands in that tab while it sits in
--- the background behind the query buffer, which looks exactly like "I ran it
--- and nothing happened". A split keeps both panes visible, so re-runs are
--- always on screen.
---
--- `location = "split"` landed in vimcode#2009; fall back to a tab on an older
--- engine that only knows `"tab"` (open_view raises on an unknown location).
+-- Caveat worth knowing: there is no "focus the existing tab" API, so on a
+-- re-run the refresh lands in this tab even when it is sitting behind the
+-- query buffer -- a background update can look like "nothing happened". To
+-- counter that, run_query's on_exit also prints a one-line status message
+-- (row count / error) so a re-run always announces itself in the status line
+-- regardless of which tab is in front.
 local function ensure_results_pane_open()
   if results_pane_opened then
     return
   end
   results_pane_opened = true
-  local ok = pcall(vimcode.ui.open_view, RESULTS_VIEW, { location = "split", side = "below" })
-  if not ok then
-    pcall(vimcode.ui.open_view, RESULTS_VIEW, { location = "tab" })
-  end
+  vimcode.ui.open_view(RESULTS_VIEW, { location = "tab" })
 end
 
 local function run_query(sql)
@@ -397,6 +389,15 @@ local function run_query(sql)
             status_text = status_text .. " -- warning: " .. stderr
           end
         end
+      end
+
+      -- Announce the outcome in the status line too: the results tab may be in
+      -- the background (open_view can't re-focus an existing tab), so this is
+      -- how a re-run tells you it ran without you switching to the tab.
+      if error_text then
+        vimcode.message("sql-tool: query error -- see SQL Results tab")
+      else
+        vimcode.message("sql-tool: " .. status_text)
       end
 
       vimcode.ui.refresh(RESULTS_VIEW)

@@ -68,11 +68,11 @@ There is no visual-mode binding: see "Known limitations" below.
   deduplicated by path.
 - `:SqlRun` reads the buffer (or a hand-typed numeric range), spawns
   `sqlite3 <db> -json '<query>'`, and shows the parsed rows in a results
-  view (`vimcode.ui.register_view`, `kind = "table"`) opened as a horizontal
-  split *below* the query buffer (query on top, grid below), reused across
-  runs so both panes stay visible as you edit and re-run. (On an engine
-  without `open_view` split support it falls back to a tab.) Column names
-  come from the union of keys
+  view (`vimcode.ui.register_view`, `kind = "table"`) opened as its own tab,
+  reused across runs. Because a re-run can update that tab while it sits
+  behind the query buffer, each run also prints a one-line status message
+  (row count, or an error pointer) so it never looks like nothing happened.
+  Column names come from the union of keys
   across every returned row (sorted, since `sqlite3 -json` does not
   guarantee key order and a query can return rows with different NULL
   columns present/absent).
@@ -125,12 +125,14 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   but no header row); the extension still supplies the column titles and
   `:SqlSort` still reorders the rows, so this is a `vimcode`/quadraui table-
   rendering regression, not a change here. Tracked as JDonaghy/vimcode#2037.
-- **A closed results split is not reopened.** The results pane opens once (as
-  a split below the query buffer) and is reused across `:SqlRun` calls —
-  `open_view` has no "focus/reopen the existing one" mode, only "open a brand
-  new one", so if you *close* the results split, later runs update it offscreen
-  with no way to bring it back short of reloading the extension. (Reopening a
-  closed view in place would need that missing `open_view` mode in `vimcode`.)
+- **Re-runs update the results tab in the background.** The results open in
+  their own tab, opened once and reused. `open_view` has no "focus/reopen the
+  existing tab" mode (only "open a brand new one"), so a re-run refreshes that
+  tab even when it is behind the query buffer — and if you *close* it, later
+  runs update it offscreen until you reload. The per-run status-line message
+  (row count / error) is the mitigation; a real fix needs a focus-existing-tab
+  mode in `vimcode`'s `open_view`. (Opening the grid as a split avoids this but
+  was not the preferred layout.)
 - **There is no visual-mode `:SqlRun`.** `:'<,'>SqlRun` (vim-native visual
   range syntax) can never dispatch to a plugin command — any `'`-prefixed
   command name is routed to a dispatcher that only recognizes built-in

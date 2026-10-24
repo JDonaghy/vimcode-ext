@@ -518,10 +518,11 @@ mock1.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
 mock1.commands.SqlRun("")
 
 ok(mock1.opened_views.sql_tool_results ~= nil, "results view opened on first run")
-equals(mock1.opened_views.sql_tool_results.location, "split",
-  "results open as a split (below the query buffer), not a background tab")
-equals(mock1.opened_views.sql_tool_results.side, "below", "results split is placed below")
+equals(mock1.opened_views.sql_tool_results.location, "tab", "results open as their own tab")
 ok(#mock1.refresh_calls >= 2, "results view refreshed at least once before and after the query")
+-- A completion message is printed so a background re-run isn't silent.
+ok(mock1.messages[#mock1.messages] and mock1.messages[#mock1.messages]:match("row"),
+  "a successful run announces its row count in the status line")
 
 local body1 = mock1.views.sql_tool_results.render(nil)
 equals(body1.kind, "table", "render() returns a table body for a successful query")
