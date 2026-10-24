@@ -694,9 +694,9 @@ equals(mock5.registers["+"], "b", "selecting a column copies the column name to 
 mock5.handlers["panel_collapse"]("sql_tool|Tables|t||0")
 equals(#mock5.panel_items["sql_tool"]["Tables"], 1, "collapsing a table hides its column children")
 
--- The toolbar's Disconnect action (key 'd', from anywhere in the panel) clears
--- the tree.
-mock5.handlers["panel_action"]("sql_tool|Connection|__toolbar__|d|0")
+-- The Disconnect action key 'd' (panel_action, from anywhere in the panel)
+-- clears the tree.
+mock5.handlers["panel_action"]("sql_tool|Connection|__status__|d|0")
 equals(#(mock5.panel_items["sql_tool"]["Tables"] or {}), 0, "disconnect clears the Tables tree")
 ok(mock5.messages[#mock5.messages]:match("disconnected"), "disconnect reports it")
 
@@ -751,6 +751,26 @@ ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
 mock6.last_picker.on_select(1)
 local reconn_tables = mock6.panel_items["sql_tool"]["Tables"]
 ok(reconn_tables and #reconn_tables == 1, "connecting from a saved connection repopulates the tree")
+
+-- The panel registers a real clickable toolbar; its buttons drive the same
+-- actions as the c/n/d/r keys and fire panel_toolbar("<panel>|<id>").
+local toolbar = mock6.panels["sql_tool"].toolbar
+ok(toolbar ~= nil and #toolbar == 4, "panel registers a four-button toolbar")
+equals(toolbar[1].id, "connect", "first toolbar button is Connect")
+equals(toolbar[3].id, "disconnect", "third toolbar button is Disconnect")
+
+-- Clicking Disconnect via the toolbar clears the tree.
+mock6.handlers["panel_toolbar"]("sql_tool|disconnect")
+equals(#(mock6.panel_items["sql_tool"]["Tables"] or {}), 0, "toolbar Disconnect clears the tree")
+
+-- Clicking Connect via the toolbar opens the connect picker (one saved conn),
+-- and picking it repopulates the tree.
+mock6.handlers["panel_toolbar"]("sql_tool|connect")
+ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
+  "toolbar Connect opens the connect picker")
+mock6.last_picker.on_select(1)
+equals(#mock6.panel_items["sql_tool"]["Tables"], 1,
+  "connecting from the toolbar picker repopulates the tree")
 
 -- ---------------------------------------------------------------------------
 

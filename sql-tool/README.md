@@ -13,12 +13,11 @@ call — so the editor never freezes while a query is in flight.
 A **SQL** panel in the activity-bar sidebar is the home for browsing and
 connecting. It has three sections:
 
-- **Connection** — a toolbar row with **Connect**, **New**, **Disconnect** and
-  **Refresh** actions, followed by one row per saved connection. Trigger the
-  actions with the keys `c` / `n` / `d` / `r`, or select the toolbar row to
-  get them as a picker (plugin panels have no clickable button row yet —
-  JDonaghy/vimcode#2028). Selecting a saved connection connects to it;
-  right-click it to connect or delete.
+- **Connection** — a clickable toolbar (**Connect**, **New**, **Disconnect**,
+  **Refresh**) under the panel header, a status line, and one row per saved
+  connection. Click a toolbar button, or use the keys `c` / `n` / `d` / `r`.
+  Selecting a saved connection connects to it; right-click it to connect or
+  delete.
 - **Tables** — the connected database's tables. Press `Tab` on a table to
   expand it to its **columns** (fetched lazily and cached). Press `Enter` (or
   right-click → "Select top 1000 rows") to run `SELECT * FROM <table> LIMIT
@@ -104,20 +103,14 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   non-editable; editing query results back into the database is explicitly
   out of scope for this extension (tracked as a separate, unfiled
   follow-on).
-- **Results columns cannot be resized, and there is no click-a-header sort.**
-  The `kind = "table"` plugin view exposes only `title` and `editable` per
-  column — no width — and emits no column/header event (only row
-  select/activate and cell-edit), so neither interactive column resizing nor
-  click-to-sort is reachable from Lua. `:SqlSort` works around the sort half
-  by reordering rows from a command instead. Both would need new surface in
-  `vimcode` core (a column width field + resize handling; a header/column
-  event). Tracked upstream in `vimcode` as JDonaghy/vimcode#2018.
-- **The panel toolbar is not a clickable button row.** A plugin tree panel has
-  no toolbar primitive, and its per-item action badges aren't independently
-  mouse-clickable — a click on a panel row only fires `panel_select`. So the
-  Connection toolbar's actions are driven by the keys `c` / `n` / `d` / `r`,
-  with a click on the toolbar row opening them as a picker. A real clickable
-  button row needs core support, tracked upstream as JDonaghy/vimcode#2028.
+- **There is no click-a-header sort.** Result columns **can** now be resized
+  by dragging a header divider (the `kind = "table"` view gained interactive
+  resize upstream in JDonaghy/vimcode#2018), but the header-*click*-to-sort
+  half of that work was deferred: the table view emits no header/column event,
+  so a click-to-sort UX is still not reachable from Lua. `:SqlSort` reorders
+  rows from a command instead. A plugin also can't declare default column
+  widths (the column spec is still `title` + `editable` only). Both the header
+  event and a declarable width are tracked upstream as JDonaghy/vimcode#2034.
 - **The connection dialog leaves a stray activity-bar icon.** It is a
   `vimcode.ui.register_view` form opened as a tab, and the engine registers a
   sidebar panel for *every* view (the same reason the results grid also shows

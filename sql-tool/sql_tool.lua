@@ -645,12 +645,11 @@ vimcode.ui.register_view(RESULTS_VIEW, {
 --   Views       the connected database's views.
 --
 -- Selecting (Enter / click) a table or view runs "select top N" into the
--- results grid; a column copies its name. The toolbar's actions are driven by
--- keyboard keys (c/n/d/r) and, for mouse users, by selecting the toolbar row,
--- which opens an actions picker -- plugin panels have no native clickable
--- button row yet (tracked upstream as JDonaghy/vimcode#2028), so this is the
--- interim affordance. Right-click a table/view for a context menu
--- (JDonaghy/vimcode#2022), or a saved connection to connect/delete.
+-- results grid; a column copies its name. The Connect / New / Disconnect /
+-- Refresh actions are a real clickable toolbar (panel.register's `toolbar`,
+-- firing panel_toolbar) and also the keyboard keys c/n/d/r (panel_action).
+-- Right-click a table/view for a context menu (JDonaghy/vimcode#2022), or a
+-- saved connection to connect/delete.
 --
 -- The tree is (re)built by spawning the adapter's catalog/column queries
 -- through the same non-blocking vimcode.loop.spawn path queries use, so a
@@ -675,6 +674,15 @@ vimcode.panel.register(PANEL, {
   title = "SQL",
   icon = "\u{f1c0}", -- database glyph
   sections = { "Connection", "Tables", "Views" },
+  -- A real clickable button row under the panel header. Clicking a button
+  -- fires `panel_toolbar` with "<panel>|<id>". The keyboard keys c/n/d/r
+  -- (panel_action) run the same actions.
+  toolbar = {
+    { id = "connect", label = "Connect", icon = "\u{f0c1}" },
+    { id = "new", label = "New", icon = "\u{f067}" },
+    { id = "disconnect", label = "Disconnect", icon = "\u{f127}" },
+    { id = "refresh", label = "Refresh", icon = "\u{f021}" },
+  },
 })
 
 vimcode.panel.set_help(PANEL, {
@@ -759,18 +767,13 @@ local function render_panel()
   else
     label = "\u{25cb} not connected"
   end
+  -- A non-interactive status line; the actions live in the panel's real
+  -- toolbar (see panel.register above), not on this row.
   conn_items[#conn_items + 1] = {
     text = label,
-    id = "__toolbar__",
+    id = "__status__",
     style = "header",
-    actions = {
-      { label = "Connect", key = "c" },
-      { label = "New", key = "n" },
-      { label = "Disconnect", key = "d" },
-      { label = "Refresh", key = "r" },
-    },
   }
-  node_index[nkey("Connection", "__toolbar__")] = { kind = "toolbar" }
   for i, cfg in ipairs(load_connections()) do
     local id = "conn::" .. i
     local disp = adapters[cfg.engine]
@@ -965,18 +968,21 @@ local function connect_picker()
   })
 end
 
--- The toolbar's actions, shared by the keyboard keys and the mouse picker.
-local function run_toolbar_action(key)
-  if key == "c" then
+-- Toolbar actions, shared by the panel's real toolbar (panel_toolbar, keyed by
+-- button id), the keyboard keys (panel_action: c/n/d/r) and the :Sql* commands.
+local function run_action(name)
+  if name == "connect" then
     connect_picker()
-  elseif key == "n" then
+  elseif name == "new" then
     open_conn_dialog()
-  elseif key == "d" then
+  elseif name == "disconnect" then
     do_disconnect()
-  elseif key == "r" then
+  elseif name == "refresh" then
     refresh_objects()
   end
 end
+
+local KEY_ACTION = { c = "connect", n = "new", d = "disconnect", r = "refresh" }
 
 -- ── panel events ─────────────────────────────────────────────────────────────
 vimcode.on("panel_focus", function(name)
@@ -994,22 +1000,7 @@ vimcode.on("panel_select", function(arg)
   if node == nil then
     return
   end
-  if node.kind == "toolbar" then
-    -- Mouse affordance for the button row: clicking it opens its actions as a
-    -- picker (no clickable button row in the panel API yet -- vimcode#2028).
-    vimcode.picker.open({
-      title = "sql-tool",
-      items = {
-        { display = "Connect to a saved connection", data = "c" },
-        { display = "New connection", data = "n" },
-        { display = "Disconnect", data = "d" },
-        { display = "Refresh", data = "r" },
-      },
-      on_select = function(k)
-        run_toolbar_action(k)
-      end,
-    })
-  elseif node.kind == "connection" then
+  if node.kind == "connection" then
     connect_config(node.cfg)
   elseif node.kind == "table" or node.kind == "view" then
     select_top_n(node.name)
@@ -1025,9 +1016,21 @@ vimcode.on("panel_action", function(arg)
     return
   end
   -- The toolbar's action keys work from anywhere in the panel.
-  if e.key == "c" or e.key == "n" or e.key == "d" or e.key == "r" then
-    run_toolbar_action(e.key)
+  local name = KEY_ACTION[e.key]
+  if name then
+    run_action(name)
   end
+end)
+
+-- The real panel toolbar (panel.register's `toolbar`). Its arg is
+-- "<panel>|<button_id>", so parse_event lands the button id in the `section`
+-- field (there is no section/id for a toolbar click).
+vimcode.on("panel_toolbar", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL then
+    return
+  end
+  run_action(e.section)
 end)
 
 vimcode.on("panel_expand", function(arg)
