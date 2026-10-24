@@ -7,12 +7,13 @@
 -- rendered body of the registered results view.
 --
 -- Run it with:
---   lua5.4 sql_tool_spec.lua
--- from this directory. Requires `lua5.4` and `sqlite3` on PATH; both create
--- and delete a scratch file under /tmp. Neither binary is available in the
--- sandbox this test was written in, so it has been written and committed
--- WITHOUT being run -- see ../README.md's "Manual verification" section.
--- Treat it as a starting point for CI, not as proof the extension works.
+--   lua5.4 sql_tool_spec.lua      (or: luajit sql_tool_spec.lua)
+-- from this directory. Requires a Lua interpreter and `sqlite3` on PATH; it
+-- creates and deletes scratch files under /tmp. It is run during development
+-- with `luajit` + `sqlite3`. Two caveats (see ../README.md's "Manual
+-- verification"): it is not wired into CI, and `luajit` is Lua 5.1, not the
+-- Lua 5.4/mlua sandbox VimCode embeds -- so a real-build smoke is the real
+-- proof. Treat this as a fast regression net, not as proof the extension works.
 
 local failures = 0
 local checks = 0
@@ -673,6 +674,83 @@ mock5.handlers["panel_context_menu"]("sql_tool|Tables|t||0")
 ok(mock5.last_picker ~= nil and #mock5.last_picker.items == 2, "right-click opens a two-action picker")
 mock5.last_picker.on_select("copy")
 equals(mock5.registers["+"], "t", "the copy-name action copies the object name to the clipboard")
+
+-- Tab-expanding a table lazily loads its columns as indented child rows.
+mock5.handlers["panel_expand"]("sql_tool|Tables|t||0")
+local expanded_tables = mock5.panel_items["sql_tool"]["Tables"]
+equals(#expanded_tables, 3, "expanding table 't' adds its two columns as child rows")
+equals(expanded_tables[1].text, "t", "the table row stays first after expansion")
+ok(expanded_tables[1].expanded == true, "the expanded table row is marked expanded")
+equals(expanded_tables[2].text, "a", "first column 'a' listed in definition order")
+equals(expanded_tables[2].parent_id, "t", "column rows are children of their table")
+equals(expanded_tables[2].indent, 1, "column rows are indented under the table")
+equals(expanded_tables[3].text, "b", "second column 'b' listed after 'a'")
+
+-- Selecting a column copies its name.
+mock5.handlers["panel_select"]("sql_tool|Tables|col::t::b||0")
+equals(mock5.registers["+"], "b", "selecting a column copies the column name to the clipboard")
+
+-- Collapsing hides the column children again.
+mock5.handlers["panel_collapse"]("sql_tool|Tables|t||0")
+equals(#mock5.panel_items["sql_tool"]["Tables"], 1, "collapsing a table hides its column children")
+
+-- The toolbar's Disconnect action (key 'd', from anywhere in the panel) clears
+-- the tree.
+mock5.handlers["panel_action"]("sql_tool|Connection|__toolbar__|d|0")
+equals(#(mock5.panel_items["sql_tool"]["Tables"] or {}), 0, "disconnect clears the Tables tree")
+ok(mock5.messages[#mock5.messages]:match("disconnected"), "disconnect reports it")
+
+-- ---------------------------------------------------------------------------
+-- Session 6: the connection dialog (a register_view form). Filling in a name
+-- and a path and clicking Connect opens the database, populates the tree, and
+-- saves the connection -- which then appears in the panel's Connection section
+-- and can be reconnected from the connect picker.
+-- ---------------------------------------------------------------------------
+
+local storage6 = {}
+local mock6 = make_mock(storage6)
+load_extension(mock6)
+
+local dialog = mock6.views["sql_tool_conn"]
+ok(dialog ~= nil, "connection dialog view registered at load")
+ok(mock6.commands.SqlNewConnection ~= nil, "SqlNewConnection command registered")
+ok(mock6.commands.SqlConnections ~= nil, "SqlConnections command registered")
+
+-- The dialog renders a field stack with a name, an engine dropdown, the
+-- SQLite path field, and a Connect button.
+local form = dialog.render(nil)
+ok(form.fields ~= nil, "dialog renders a field stack")
+local has_path, has_connect = false, false
+for _, f in ipairs(form.fields) do
+  if f.id == "f:path" then has_path = true end
+  if f.id == "connect" and f.type == "button" then has_connect = true end
+end
+ok(has_path, "dialog shows the SQLite 'path' field")
+ok(has_connect, "dialog has a Connect button")
+
+-- Fill in the form and click Connect.
+dialog.on_event(nil, { kind = "TextChanged", widget_id = "name", value = "myfix" })
+dialog.on_event(nil, { kind = "TextChanged", widget_id = "f:path", value = fixture_path })
+dialog.on_event(nil, { kind = "ButtonClicked", widget_id = "connect" })
+
+local dlg_tables = mock6.panel_items["sql_tool"]["Tables"]
+ok(dlg_tables and #dlg_tables == 1 and dlg_tables[1].text == "t",
+  "dialog Connect opened the database and populated the tree")
+
+equals(storage6.connections and #storage6.connections, 1, "the connection was persisted")
+equals(storage6.connections[1].name, "myfix", "the saved connection kept its name")
+equals(storage6.connections[1].values.path, fixture_path, "the saved connection kept its path")
+local conn_section = mock6.panel_items["sql_tool"]["Connection"]
+ok(#conn_section >= 2, "the saved connection appears below the toolbar row")
+equals(conn_section[2].text, "myfix", "the saved connection row shows its name")
+
+-- Reconnecting from a saved config (as the panel's connect picker does).
+mock6.commands.SqlConnections("")
+ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
+  "SqlConnections lists the one saved connection")
+mock6.last_picker.on_select(1)
+local reconn_tables = mock6.panel_items["sql_tool"]["Tables"]
+ok(reconn_tables and #reconn_tables == 1, "connecting from a saved connection repopulates the tree")
 
 -- ---------------------------------------------------------------------------
 

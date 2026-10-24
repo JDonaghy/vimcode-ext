@@ -10,16 +10,31 @@ call — so the editor never freezes while a query is in flight.
 
 ## Database panel
 
-Once you connect, a **SQL** panel appears in the activity-bar sidebar listing
-the database's **Tables** and **Views**. Press `Enter` on an object (or
-right-click it) to run `SELECT * FROM <object> LIMIT 1000` into the results
-grid; right-click also offers "Copy name". Press `r` to refresh the object
-list. The panel is engine-agnostic — each adapter supplies its own catalog
-query and `SELECT TOP N` dialect (see "Adapters" below).
+A **SQL** panel in the activity-bar sidebar is the home for browsing and
+connecting. It has three sections:
 
-Column-level children (expand a table to see its columns) are a planned
-follow-on. Right-click currently opens the actions as a picker rather than a
-native anchored menu — that needs core support in VimCode (JDonaghy/vimcode#2022).
+- **Connection** — a toolbar row with **Connect**, **New**, **Disconnect** and
+  **Refresh** actions, followed by one row per saved connection. Trigger the
+  actions with the keys `c` / `n` / `d` / `r`, or select the toolbar row to
+  get them as a picker (plugin panels have no clickable button row yet —
+  JDonaghy/vimcode#2028). Selecting a saved connection connects to it;
+  right-click it to connect or delete.
+- **Tables** — the connected database's tables. Press `Tab` on a table to
+  expand it to its **columns** (fetched lazily and cached). Press `Enter` (or
+  right-click → "Select top 1000 rows") to run `SELECT * FROM <table> LIMIT
+  1000` into the results grid. `Enter` on a column copies its name.
+- **Views** — the database's views, same `Enter` / right-click behaviour.
+
+The panel is engine-agnostic — each adapter supplies its own catalog query,
+column query and `SELECT TOP N` dialect (see "Adapters" below).
+
+**New connection** (the `n` action, or `:SqlNewConnection`) opens a connection
+**dialog** — a form with a name, an engine dropdown, the engine's connection
+fields (for SQLite, a file path; a server engine would add host/port/user and a
+masked password) and a **Connect** button. It opens as an editor tab. On
+connect it opens the database and saves the connection (minus any password —
+see "Adapters") to the Connection section. `:SqlConnections` reconnects to a
+saved connection from a picker.
 
 ## Commands
 
@@ -29,6 +44,8 @@ native anchored menu — that needs core support in VimCode (JDonaghy/vimcode#20
 | `:SqlPickRecent` | Fuzzy-pick a previously opened database and switch to it. |
 | `:SqlRun` | Run the whole query buffer, or just lines `<start>,<end>` when given a hand-typed numeric range (e.g. `:SqlRun 3,7`). |
 | `:SqlSort <column\|index> [asc\|desc]` | Reorder the current result rows in place by one column, without re-querying. Numeric columns sort numerically (not lexicographically); `NULL`s sort first ascending / last descending. The column may be named or given as a 1-based index into the displayed columns. There is no click-a-header sort — see "Known limitations". |
+| `:SqlNewConnection` | Open the connection dialog (a form, in a tab) to define and connect to a new database. |
+| `:SqlConnections` | Pick a saved connection from a fuzzy picker and connect to it. |
 
 ## Keymaps
 
@@ -95,6 +112,18 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   by reordering rows from a command instead. Both would need new surface in
   `vimcode` core (a column width field + resize handling; a header/column
   event). Tracked upstream in `vimcode` as JDonaghy/vimcode#2018.
+- **The panel toolbar is not a clickable button row.** A plugin tree panel has
+  no toolbar primitive, and its per-item action badges aren't independently
+  mouse-clickable — a click on a panel row only fires `panel_select`. So the
+  Connection toolbar's actions are driven by the keys `c` / `n` / `d` / `r`,
+  with a click on the toolbar row opening them as a picker. A real clickable
+  button row needs core support, tracked upstream as JDonaghy/vimcode#2028.
+- **The connection dialog leaves a stray activity-bar icon.** It is a
+  `vimcode.ui.register_view` form opened as a tab, and the engine registers a
+  sidebar panel for *every* view (the same reason the results grid also shows
+  in the sidebar). There is no "tab-only view" option and a view's `render`
+  can't tell whether it is painting the sidebar or the tab, so the extra icon
+  can't be suppressed from Lua — it needs core support.
 - **The results pane cannot be a side-by-side split.** `vimcode.ui.open_view`
   always opens a `kind = "table"` plugin view as a brand-new tab; there is
   no engine primitive that can place one as a sibling split of the query
@@ -116,17 +145,19 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   discard whatever query you were mid-typing, so later switches change
   only which database `:SqlRun` targets, not the buffer.
 
-## Manual verification (no automated Lua runtime in this repo or sandbox)
+## Manual verification (no automated Lua runtime wired into CI)
 
-This repository's Lua is not executed by any automated test — see the root
+This repository's Lua is not executed by the repo's CI gate — see the root
 `README.md`'s "What is NOT tested here" section. `scripts/validate.py` only
 proves `manifest.toml` parses and matches `registry.json`; it never loads
 `sql_tool.lua`. `tests/sql_tool_spec.lua` in this directory is a genuine,
-runnable black-box test (mocking the `vimcode` table) for anyone with
-`lua5.4` and `sqlite3` installed, but it was written and committed without
-being run — this sandbox has neither binary available, nor permission to
-install them. Treat it as a starting point for CI, not as proof the
-extension works.
+runnable black-box test (mocking the `vimcode` table) that drives the real
+`sql_tool.lua` against the real `sqlite3` CLI; it is run during development
+with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 84
+checks. Two caveats keep it from being proof the extension works in VimCode:
+it is not wired into CI, and `luajit` is Lua 5.1, not the Lua 5.4/mlua sandbox
+VimCode embeds — so the manual smoke below (in a real build) remains the real
+proof, especially for the panel and dialog, which the mock can only approximate.
 
 To verify by hand in a real VimCode build:
 

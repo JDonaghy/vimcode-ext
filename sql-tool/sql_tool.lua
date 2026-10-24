@@ -8,12 +8,16 @@
 --                      `sqlite3 -json` and show the rows in a results tab
 -- :SqlSort <col> [dir] reorder the current results by one column (numeric
 --                      columns sort numerically), ascending or `desc`
+-- :SqlNewConnection   open the connection dialog (a form, in a tab)
+-- :SqlConnections     pick a saved connection and connect
 -- <leader>r           normal mode: runs the whole buffer
 --
--- There is also a "SQL" activity-bar panel: once connected it lists the
--- database's Tables and Views; Enter (or right-click) on one runs a
--- "select top N rows" into the results grid. See the "Database panel" block
--- at the end of this file.
+-- There is also a "SQL" activity-bar panel: a toolbar row (Connect / New /
+-- Disconnect / Refresh) plus a tree of the connected database's Tables (Tab
+-- to expand a table to its columns) and Views. Enter / right-click on a table
+-- or view runs "select top N rows" into the results grid. See the
+-- "Connection manager + database panel" and "Connection dialog" blocks at the
+-- end of this file.
 --
 -- Requires the `sqlite3` CLI on PATH. Every `sqlite3` invocation runs via
 -- `vimcode.loop.spawn`, never a blocking shell call, so the editor stays
@@ -232,12 +236,61 @@ local sqlite_adapter = {
   top_n_sql = function(name, n)
     return 'SELECT * FROM "' .. name:gsub('"', '""') .. '" LIMIT ' .. n .. ";"
   end,
+
+  -- Argv listing one table's columns, for lazy tree expansion. SQLite's
+  -- `PRAGMA table_info` returns cid/name/type/notnull/dflt_value/pk per column
+  -- (a Postgres adapter would query information_schema.columns instead).
+  columns_args = function(conn, table_name)
+    return {
+      conn.path, "-json", "--",
+      "PRAGMA table_info('" .. table_name:gsub("'", "''") .. "');",
+    }
+  end,
+
+  -- Parse that into a normalized { {name=, type=, pk=}, ... } list, in the
+  -- table's definition order, or (nil, err).
+  parse_columns = function(stdout)
+    local ok, decoded = pcall(vimcode.json.decode, stdout == "" and "[]" or stdout)
+    if not ok then
+      return nil, "could not parse sqlite3 table_info output: " .. tostring(decoded)
+    end
+    local cols = {}
+    if type(decoded) == "table" then
+      for _, row in ipairs(decoded) do
+        if type(row) == "table" and type(row.name) == "string" then
+          cols[#cols + 1] = {
+            name = row.name,
+            type = (type(row.type) == "string" and row.type ~= "") and row.type or nil,
+            pk = row.pk == 1 or row.pk == true,
+          }
+        end
+      end
+    end
+    return cols
+  end,
+
+  -- The fields the connection dialog shows for this engine. SQLite is
+  -- file-based, so a single path; a server adapter would list host/port/
+  -- database/user and a `type = "password"` field. A password field is never
+  -- persisted (see strip_secrets and the README's "Adapters" note).
+  conn_fields = {
+    { id = "path", label = "Database file", type = "text", placeholder = "/path/to/file.db" },
+  },
+
+  -- Build the open() target from a table of connection-field id -> value. For
+  -- SQLite the target is just the file path.
+  make_target = function(values)
+    return values.path or ""
+  end,
 }
 
 local adapters = { [sqlite_adapter.kind] = sqlite_adapter }
+-- Ordered list (the map above has no order) for the engine dropdown in the
+-- connection dialog. SQLite is the only entry today.
+local adapter_list = { sqlite_adapter }
 
--- SQLite is the only adapter today, so it is the default. A future
--- :SqlConnect that picks an engine would set current_adapter per connection.
+-- SQLite is the only adapter today, so it is the default. The connection
+-- dialog's engine dropdown sets current_adapter per connection.
 current_adapter = sqlite_adapter
 
 -- Opening the results view is done once, the first time a query runs.
@@ -582,58 +635,208 @@ vimcode.ui.register_view(RESULTS_VIEW, {
 })
 
 -- ===========================================================================
--- Database panel (activity-bar sidebar)
+-- Connection manager + database panel (activity-bar sidebar)
 --
--- A tree of the connected database's objects: a "Tables" section and a "Views"
--- section. Selecting (Enter) an object, or right-clicking it, runs "Select top
--- N rows" into the results grid. The tree is (re)built by spawning the
--- adapter's catalog query through the same non-blocking vimcode.loop.spawn
--- path queries use, so a large catalog never freezes the editor.
+-- The "SQL" panel has three sections:
+--   Connection  a toolbar row (Connect / New / Disconnect / Refresh) plus one
+--               row per saved connection.
+--   Tables      the connected database's tables; Tab expands a table to its
+--               columns (fetched lazily and cached).
+--   Views       the connected database's views.
 --
--- Column-level children (lazy-loaded when a table node is expanded) are a
--- planned follow-on; today each object is a flat row in its section. A native
--- anchored right-click menu is not available to panels yet (tracked upstream
--- as vimcode#2022), so right-click presents the actions as a picker.
+-- Selecting (Enter / click) a table or view runs "select top N" into the
+-- results grid; a column copies its name. The toolbar's actions are driven by
+-- keyboard keys (c/n/d/r) and, for mouse users, by selecting the toolbar row,
+-- which opens an actions picker -- plugin panels have no native clickable
+-- button row yet (tracked upstream as JDonaghy/vimcode#2028), so this is the
+-- interim affordance. Right-click a table/view for a context menu
+-- (JDonaghy/vimcode#2022), or a saved connection to connect/delete.
+--
+-- The tree is (re)built by spawning the adapter's catalog/column queries
+-- through the same non-blocking vimcode.loop.spawn path queries use, so a
+-- large catalog never freezes the editor.
 -- ===========================================================================
 
 local PANEL = "sql_tool"
 local TOP_N = 1000
+local CONN_DIALOG = "sql_tool_conn"
+
+-- Catalog of the connected database, its per-table column cache, and which
+-- tables are expanded in the tree. Rebuilt on connect / refresh; columns and
+-- expansion are lazy (see expand_table).
+local catalog = { tables = {}, views = {} }
+local columns_cache = {}
+local expanded = {}
+-- Section-qualified id -> node descriptor, rebuilt by render_panel so the
+-- event handlers dispatch without re-parsing ids. See nkey().
+local node_index = {}
 
 vimcode.panel.register(PANEL, {
   title = "SQL",
   icon = "\u{f1c0}", -- database glyph
-  sections = { "Tables", "Views" },
+  sections = { "Connection", "Tables", "Views" },
 })
 
 vimcode.panel.set_help(PANEL, {
-  { "Enter", "Select top " .. TOP_N .. " rows" },
-  { "Right-click", "Actions (select top N, copy name)" },
-  { "r", "Refresh object list" },
+  { "Enter", "Open (select top " .. TOP_N .. ") / connect / copy column" },
+  { "Tab", "Expand a table to its columns" },
+  { "c", "Connect to a saved connection" },
+  { "n", "New connection" },
+  { "d", "Disconnect" },
+  { "r", "Refresh" },
+  { "Right-click", "Context menu" },
   { "q/Esc", "Close panel" },
 })
 
-local function object_items(objs, want_type, icon)
-  local items = {}
-  for _, o in ipairs(objs) do
-    if o.type == want_type then
-      items[#items + 1] = { text = o.name, id = o.name, icon = icon }
-    end
+-- ── saved connections (vimcode.storage; never stores a password) ───────────
+local function load_connections()
+  local ok, list = pcall(vimcode.storage.get, "connections")
+  if ok and type(list) == "table" then
+    return list
   end
-  return items
+  return {}
 end
 
--- Assigns the forward-declared upvalue (no `local`), so open_db above can call
--- it. Clears the tree when disconnected; otherwise spawns the adapter's
--- catalog query and fills the Tables/Views sections from the parsed result.
+local function save_connections(list)
+  pcall(vimcode.storage.set, "connections", list)
+end
+
+-- Drop any password-typed field before persisting: vimcode.storage is
+-- plaintext and there is no secrets store (see README "Adapters").
+local function strip_secrets(cfg)
+  local adapter = adapters[cfg.engine]
+  local values = {}
+  for k, v in pairs(cfg.values or {}) do
+    values[k] = v
+  end
+  if adapter and adapter.conn_fields then
+    for _, f in ipairs(adapter.conn_fields) do
+      if f.type == "password" then
+        values[f.id] = nil
+      end
+    end
+  end
+  return { name = cfg.name, engine = cfg.engine, values = values }
+end
+
+local function remember_connection(cfg)
+  if not cfg.name or cfg.name == "" then
+    return
+  end
+  local list = load_connections()
+  local deduped = {}
+  for _, existing in ipairs(list) do
+    if existing.name ~= cfg.name then
+      deduped[#deduped + 1] = existing
+    end
+  end
+  table.insert(deduped, 1, strip_secrets(cfg))
+  save_connections(deduped)
+end
+
+-- ── panel rendering ────────────────────────────────────────────────────────
+-- node_index key: section + id, NUL-joined. The id alone is not unique (a
+-- table and a view can share a name), and the join char must not be "|" (the
+-- panel event-arg delimiter parse_event splits on).
+local function nkey(section, id)
+  return section .. "\0" .. id
+end
+
+local TABLE_ICON = "\u{f0ce}"
+local VIEW_ICON = "\u{f06e}"
+local COLUMN_ICON = "\u{f0db}"
+
+-- Rebuild all three sections (and node_index) from the current state. Cheap and
+-- pure Lua; called after any state change.
+local function render_panel()
+  node_index = {}
+
+  -- Connection section: a toolbar row, then one row per saved connection.
+  local conn_items = {}
+  local label
+  if current_conn ~= nil then
+    label = "\u{25cf} " .. current_adapter.label(current_conn)
+  else
+    label = "\u{25cb} not connected"
+  end
+  conn_items[#conn_items + 1] = {
+    text = label,
+    id = "__toolbar__",
+    style = "header",
+    actions = {
+      { label = "Connect", key = "c" },
+      { label = "New", key = "n" },
+      { label = "Disconnect", key = "d" },
+      { label = "Refresh", key = "r" },
+    },
+  }
+  node_index[nkey("Connection", "__toolbar__")] = { kind = "toolbar" }
+  for i, cfg in ipairs(load_connections()) do
+    local id = "conn::" .. i
+    local disp = adapters[cfg.engine]
+    conn_items[#conn_items + 1] = {
+      text = cfg.name,
+      id = id,
+      hint = disp and disp.display or cfg.engine,
+      icon = "\u{f1c0}",
+    }
+    node_index[nkey("Connection", id)] = { kind = "connection", cfg = cfg }
+  end
+  vimcode.panel.set_items(PANEL, "Connection", conn_items)
+
+  -- Tables section: a row per table, columns as children when expanded.
+  local tbl_items = {}
+  for _, t in ipairs(catalog.tables) do
+    tbl_items[#tbl_items + 1] = {
+      text = t.name,
+      id = t.name,
+      icon = TABLE_ICON,
+      expandable = true,
+      expanded = expanded[t.name] or false,
+    }
+    node_index[nkey("Tables", t.name)] = { kind = "table", name = t.name }
+    if expanded[t.name] and columns_cache[t.name] then
+      for _, c in ipairs(columns_cache[t.name]) do
+        local cid = "col::" .. t.name .. "::" .. c.name
+        tbl_items[#tbl_items + 1] = {
+          text = c.name,
+          id = cid,
+          parent_id = t.name,
+          indent = 1,
+          hint = c.type,
+          icon = COLUMN_ICON,
+          style = "dim",
+        }
+        node_index[nkey("Tables", cid)] = { kind = "column", name = c.name, table = t.name }
+      end
+    end
+  end
+  vimcode.panel.set_items(PANEL, "Tables", tbl_items)
+
+  -- Views section.
+  local view_items = {}
+  for _, v in ipairs(catalog.views) do
+    view_items[#view_items + 1] = { text = v.name, id = v.name, icon = VIEW_ICON }
+    node_index[nkey("Views", v.name)] = { kind = "view", name = v.name }
+  end
+  vimcode.panel.set_items(PANEL, "Views", view_items)
+end
+
+-- Assigns the forward-declared upvalue (no `local`): open_db / connect_config
+-- call it when a connection opens. Clears the catalog when disconnected;
+-- otherwise spawns the adapter's catalog query and fills Tables/Views.
 function refresh_objects()
   if current_conn == nil then
-    vimcode.panel.set_items(PANEL, "Tables", {})
-    vimcode.panel.set_items(PANEL, "Views", {})
+    catalog = { tables = {}, views = {} }
+    columns_cache = {}
+    expanded = {}
+    render_panel()
     return
   end
   local adapter = current_adapter
+  local conn = current_conn
   local out_chunks = {}
-  pcall(vimcode.loop.spawn, adapter.binary, adapter.objects_args(current_conn), {
+  local ok_spawn = pcall(vimcode.loop.spawn, adapter.binary, adapter.objects_args(conn), {
     on_stdout = function(chunk)
       out_chunks[#out_chunks + 1] = chunk
     end,
@@ -645,10 +848,49 @@ function refresh_objects()
       if objs == nil then
         return
       end
-      vimcode.panel.set_items(PANEL, "Tables", object_items(objs, "table", "\u{f0ce}"))
-      vimcode.panel.set_items(PANEL, "Views", object_items(objs, "view", "\u{f06e}"))
+      local tables, views = {}, {}
+      for _, o in ipairs(objs) do
+        if o.type == "view" then
+          views[#views + 1] = o
+        else
+          tables[#tables + 1] = o
+        end
+      end
+      catalog = { tables = tables, views = views }
+      render_panel()
     end,
   })
+  if not ok_spawn then
+    render_panel()
+  end
+end
+
+-- Lazy-load (and cache) a table's columns, then mark it expanded and repaint.
+local function expand_table(name)
+  expanded[name] = true
+  if columns_cache[name] or current_conn == nil then
+    render_panel()
+    return
+  end
+  local adapter = current_adapter
+  local out_chunks = {}
+  local ok_spawn = pcall(vimcode.loop.spawn, adapter.binary, adapter.columns_args(current_conn, name), {
+    on_stdout = function(chunk)
+      out_chunks[#out_chunks + 1] = chunk
+    end,
+    on_exit = function(code, _)
+      if code == 0 then
+        local cols = adapter.parse_columns(table.concat(out_chunks))
+        if cols ~= nil then
+          columns_cache[name] = cols
+        end
+      end
+      render_panel()
+    end,
+  })
+  if not ok_spawn then
+    render_panel()
+  end
 end
 
 -- Run the default action (select the first N rows) for an object by name.
@@ -656,18 +898,125 @@ local function select_top_n(name)
   run_query(current_adapter.top_n_sql(name, TOP_N))
 end
 
+-- ── connection actions ──────────────────────────────────────────────────────
+-- Connect using a connection config {name, engine, values}. Returns true on
+-- success; on failure shows a message and returns false, changing no state.
+local function connect_config(cfg)
+  local adapter = adapters[cfg.engine]
+  if adapter == nil then
+    vimcode.message("sql-tool: unknown engine: " .. tostring(cfg.engine))
+    return false
+  end
+  local conn, err = adapter.open(adapter.make_target(cfg.values or {}))
+  if conn == nil then
+    vimcode.message("sql-tool: cannot connect -- " .. err)
+    return false
+  end
+  current_adapter = adapter
+  current_conn = conn
+  status_text = "connected -- no query run yet"
+  error_text = nil
+  columns, rows, row_values = {}, {}, {}
+  remember_connection(cfg)
+  if not query_buffer_opened then
+    -- Same once-per-session scratch buffer as open_db; see its comment.
+    query_buffer_opened = true
+    vimcode.buf.open_scratch(QUERY_BUFFER_NAME, "-- " .. adapter.label(conn) .. "\n\n", {
+      filetype = "sql",
+      readonly = false,
+    })
+  end
+  vimcode.message("sql-tool: connected to " .. adapter.label(conn))
+  refresh_objects()
+  return true
+end
+
+local function do_disconnect()
+  current_conn = nil
+  status_text = "no database open -- :SqlOpen <path.db>"
+  error_text = nil
+  columns, rows, row_values = {}, {}, {}
+  refresh_objects() -- current_conn == nil, so this clears the tree
+  vimcode.ui.refresh(RESULTS_VIEW)
+  vimcode.message("sql-tool: disconnected")
+end
+
+local function open_conn_dialog()
+  vimcode.ui.open_view(CONN_DIALOG, { location = "tab" })
+end
+
+local function connect_picker()
+  local list = load_connections()
+  if #list == 0 then
+    vimcode.message("sql-tool: no saved connections -- opening New")
+    open_conn_dialog()
+    return
+  end
+  local items = {}
+  for i, cfg in ipairs(list) do
+    items[i] = { display = cfg.name, data = i }
+  end
+  vimcode.picker.open({
+    title = "sql-tool: connect",
+    items = items,
+    on_select = function(i)
+      connect_config(list[i])
+    end,
+  })
+end
+
+-- The toolbar's actions, shared by the keyboard keys and the mouse picker.
+local function run_toolbar_action(key)
+  if key == "c" then
+    connect_picker()
+  elseif key == "n" then
+    open_conn_dialog()
+  elseif key == "d" then
+    do_disconnect()
+  elseif key == "r" then
+    refresh_objects()
+  end
+end
+
+-- ── panel events ─────────────────────────────────────────────────────────────
 vimcode.on("panel_focus", function(name)
   if name == PANEL then
-    refresh_objects()
+    render_panel()
   end
 end)
 
 vimcode.on("panel_select", function(arg)
   local e = vimcode.panel.parse_event(arg)
-  if e.panel ~= PANEL or e.id == "" then
+  if e.panel ~= PANEL then
     return
   end
-  select_top_n(e.id)
+  local node = node_index[nkey(e.section, e.id)]
+  if node == nil then
+    return
+  end
+  if node.kind == "toolbar" then
+    -- Mouse affordance for the button row: clicking it opens its actions as a
+    -- picker (no clickable button row in the panel API yet -- vimcode#2028).
+    vimcode.picker.open({
+      title = "sql-tool",
+      items = {
+        { display = "Connect to a saved connection", data = "c" },
+        { display = "New connection", data = "n" },
+        { display = "Disconnect", data = "d" },
+        { display = "Refresh", data = "r" },
+      },
+      on_select = function(k)
+        run_toolbar_action(k)
+      end,
+    })
+  elseif node.kind == "connection" then
+    connect_config(node.cfg)
+  elseif node.kind == "table" or node.kind == "view" then
+    select_top_n(node.name)
+  elseif node.kind == "column" then
+    vimcode.state.set_register("+", node.name, false)
+    vimcode.message("sql-tool: copied " .. node.name)
+  end
 end)
 
 vimcode.on("panel_action", function(arg)
@@ -675,31 +1024,187 @@ vimcode.on("panel_action", function(arg)
   if e.panel ~= PANEL then
     return
   end
-  if e.key == "r" then
-    refresh_objects()
-    vimcode.message("sql-tool: object list refreshed")
+  -- The toolbar's action keys work from anywhere in the panel.
+  if e.key == "c" or e.key == "n" or e.key == "d" or e.key == "r" then
+    run_toolbar_action(e.key)
+  end
+end)
+
+vimcode.on("panel_expand", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL then
+    return
+  end
+  local node = node_index[nkey(e.section, e.id)]
+  if node and node.kind == "table" then
+    expand_table(node.name)
+  end
+end)
+
+vimcode.on("panel_collapse", function(arg)
+  local e = vimcode.panel.parse_event(arg)
+  if e.panel ~= PANEL then
+    return
+  end
+  local node = node_index[nkey(e.section, e.id)]
+  if node and node.kind == "table" then
+    expanded[node.name] = false
+    render_panel()
   end
 end)
 
 vimcode.on("panel_context_menu", function(arg)
   local e = vimcode.panel.parse_event(arg)
-  if e.panel ~= PANEL or e.id == "" then
+  if e.panel ~= PANEL then
     return
   end
-  local name = e.id
-  vimcode.picker.open({
-    title = name,
-    items = {
-      { display = "Select top " .. TOP_N .. " rows", data = "top" },
-      { display = "Copy name", data = "copy" },
-    },
-    on_select = function(action)
-      if action == "top" then
-        select_top_n(name)
-      elseif action == "copy" then
-        vimcode.state.set_register("+", name, false)
-        vimcode.message("sql-tool: copied " .. name)
+  local node = node_index[nkey(e.section, e.id)]
+  if node == nil then
+    return
+  end
+  if node.kind == "table" or node.kind == "view" then
+    local name = node.name
+    vimcode.picker.open({
+      title = name,
+      items = {
+        { display = "Select top " .. TOP_N .. " rows", data = "top" },
+        { display = "Copy name", data = "copy" },
+      },
+      on_select = function(action)
+        if action == "top" then
+          select_top_n(name)
+        elseif action == "copy" then
+          vimcode.state.set_register("+", name, false)
+          vimcode.message("sql-tool: copied " .. name)
+        end
+      end,
+    })
+  elseif node.kind == "connection" then
+    local cfg = node.cfg
+    vimcode.picker.open({
+      title = cfg.name,
+      items = {
+        { display = "Connect", data = "connect" },
+        { display = "Delete", data = "delete" },
+      },
+      on_select = function(action)
+        if action == "connect" then
+          connect_config(cfg)
+        elseif action == "delete" then
+          local kept = {}
+          for _, existing in ipairs(load_connections()) do
+            if existing.name ~= cfg.name then
+              kept[#kept + 1] = existing
+            end
+          end
+          save_connections(kept)
+          render_panel()
+          vimcode.message("sql-tool: deleted connection " .. cfg.name)
+        end
+      end,
+    })
+  end
+end)
+
+-- ===========================================================================
+-- Connection dialog (vimcode.ui.register_view form, opened in a tab)
+--
+-- A form: a name, an engine dropdown, the selected engine's connection fields
+-- (SQLite: a file path; a server engine would add host/port/user and a masked
+-- `password` field), and a Connect button. On connect it opens the connection
+-- and saves it (minus any password) to the panel's saved-connection list.
+--
+-- Like every register_view, this ALSO appears as its own activity-bar panel
+-- (the engine registers a sidebar panel for every view); opening it as a tab
+-- is the intended use. That extra sidebar icon is the known view-panel wart --
+-- a tab-only view needs core support. See README "Known limitations".
+-- ===========================================================================
+
+local conn_form = { engine = adapter_list[1].kind, name = "", values = {}, status = "" }
+
+local function conn_form_engine_index()
+  for i, a in ipairs(adapter_list) do
+    if a.kind == conn_form.engine then
+      return i - 1 -- dropdown `selected` is 0-based
+    end
+  end
+  return 0
+end
+
+vimcode.ui.register_view(CONN_DIALOG, {
+  title = "SQL Connection",
+  icon = "\u{f1c0}",
+  fallback_icon = "C",
+
+  render = function(_)
+    local adapter = adapters[conn_form.engine] or adapter_list[1]
+    local engine_options = {}
+    for i, a in ipairs(adapter_list) do
+      engine_options[i] = a.display
+    end
+    local fields = {
+      { type = "label", id = "hdr", label = "New connection" },
+      { type = "text", id = "name", label = "Name", value = conn_form.name,
+        placeholder = "my database" },
+      { type = "dropdown", id = "engine", label = "Engine",
+        options = engine_options, selected = conn_form_engine_index() },
+    }
+    for _, f in ipairs(adapter.conn_fields or {}) do
+      fields[#fields + 1] = {
+        type = f.type,
+        id = "f:" .. f.id,
+        label = f.label,
+        value = conn_form.values[f.id] or "",
+        placeholder = f.placeholder,
+      }
+    end
+    fields[#fields + 1] = { type = "button", id = "connect", label = "Connect" }
+    if conn_form.status ~= "" then
+      fields[#fields + 1] = { type = "read_only", id = "status", label = "Status",
+        value = conn_form.status }
+    end
+    return { id = "conn", schema_version = 1, fields = fields }
+  end,
+
+  on_event = function(_, event)
+    local kind = event.kind
+    local wid = event.widget_id or ""
+    if kind == "DropdownChanged" and wid == "engine" then
+      local a = adapter_list[(event.value or 0) + 1]
+      if a then
+        conn_form.engine = a.kind
       end
-    end,
-  })
+      vimcode.ui.refresh(CONN_DIALOG)
+    elseif kind == "TextChanged" or kind == "TextCommitted" then
+      if wid == "name" then
+        conn_form.name = event.value or ""
+      elseif wid:sub(1, 2) == "f:" then
+        conn_form.values[wid:sub(3)] = event.value or ""
+      end
+      -- No refresh on keystrokes: the engine owns the focused field's edit
+      -- state; we just record the latest value for the next paint / connect.
+    elseif kind == "ButtonClicked" and wid == "connect" then
+      local name = conn_form.name
+      if name == "" then
+        name = conn_form.values.path or conn_form.engine
+      end
+      local connected = connect_config({
+        name = name,
+        engine = conn_form.engine,
+        values = conn_form.values,
+      })
+      conn_form.status = connected
+          and ("connected to " .. current_adapter.label(current_conn))
+        or "connection failed"
+      vimcode.ui.refresh(CONN_DIALOG)
+    end
+  end,
+})
+
+vimcode.command("SqlNewConnection", function(_)
+  open_conn_dialog()
+end)
+
+vimcode.command("SqlConnections", function(_)
+  connect_picker()
 end)
