@@ -78,6 +78,12 @@ There is no visual-mode binding: see "Known limitations" below.
   `vimcode.message`, instead of failing silently. The editor stays
   responsive throughout — a failing or slow query never blocks typing in
   another buffer.
+- Running a query while one is still in flight **supersedes** it: the new run
+  takes over the results view and the earlier query's (now stale) result is
+  discarded when it eventually finishes. Runs are tracked by a generation
+  token rather than a hard "a query is running" lock, so a query whose process
+  is killed or whose exit is never delivered can never wedge the extension
+  into refusing every later command.
 
 ## Adapters
 

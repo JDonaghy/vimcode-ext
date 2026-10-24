@@ -34,7 +34,16 @@ local MAX_RECENTS = 10
 -- first :SqlOpen.
 local current_adapter = nil
 local current_conn = nil
+-- `running` is a soft "a query is in flight" flag for the status line only --
+-- NOT a hard gate. `query_gen` is the real concurrency control: every run_query
+-- bumps it and captures the value, and a spawn's callbacks only touch shared
+-- state if their captured generation is still the latest. That way a new run
+-- always proceeds (it supersedes), so a spawn whose `on_exit` never fires -- a
+-- killed/hung child, or an engine that drops the exit event -- can never wedge
+-- the extension into "a query is already running" forever. (An earlier version
+-- hard-blocked on `running`; a stuck query then disabled every later command.)
 local running = false
+local query_gen = 0
 local status_text = "no database open -- :SqlOpen <path.db>"
 local error_text = nil
 local columns = {}
@@ -321,11 +330,11 @@ local function run_query(sql)
     vimcode.message("sql-tool: nothing to run")
     return
   end
-  if running then
-    vimcode.message("sql-tool: a query is already running")
-    return
-  end
-
+  -- A new run always proceeds and supersedes any in-flight one (see the
+  -- `query_gen` note up top): bump the generation and capture it, so only the
+  -- latest run's callbacks write to the shared view state.
+  query_gen = query_gen + 1
+  local my_gen = query_gen
   running = true
   status_text = "running..."
   error_text = nil
@@ -345,6 +354,11 @@ local function run_query(sql)
       err_chunks[#err_chunks + 1] = chunk
     end,
     on_exit = function(code, signal)
+      -- A later run_query superseded this one; its results are stale, so drop
+      -- them (and leave `running`/the view to the newer run).
+      if my_gen ~= query_gen then
+        return
+      end
       running = false
       local stdout = table.concat(out_chunks)
       local stderr = table.concat(err_chunks)
@@ -381,7 +395,7 @@ local function run_query(sql)
     end,
   })
 
-  if not ok_spawn then
+  if not ok_spawn and my_gen == query_gen then
     running = false
     status_text = "error"
     error_text = "could not start " .. adapter.binary .. ": " .. tostring(err)

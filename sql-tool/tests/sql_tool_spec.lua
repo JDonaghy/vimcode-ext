@@ -263,6 +263,12 @@ local function make_mock(storage_backing)
     panel_help = {},
     handlers = {},
     registers = {},
+    -- Spawn lifecycle control. "sync" (default) fires on_exit inside spawn()
+    -- like the original mock; "defer" captures each on_exit in pending_spawns
+    -- so a test can fire (or never fire) them out of band, exercising the real
+    -- engine's asynchronous on_exit the synchronous mock cannot.
+    spawn_mode = "sync",
+    pending_spawns = {},
   }
 
   mock.vimcode = {
@@ -417,7 +423,14 @@ local function make_mock(storage_backing)
           opts.on_stderr(stderr)
         end
         if opts.on_exit then
-          opts.on_exit(code, nil)
+          if mock.spawn_mode == "defer" then
+            -- Capture the exit; the test fires it (or doesn't) explicitly.
+            mock.pending_spawns[#mock.pending_spawns + 1] = function()
+              opts.on_exit(code, nil)
+            end
+          else
+            opts.on_exit(code, nil)
+          end
         end
         return {
           write = function() end,
@@ -771,6 +784,44 @@ ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
 mock6.last_picker.on_select(1)
 equals(#mock6.panel_items["sql_tool"]["Tables"], 1,
   "connecting from the toolbar picker repopulates the tree")
+
+-- ---------------------------------------------------------------------------
+-- Session 7: asynchronous query lifecycle. The real engine fires on_exit on a
+-- later idle tick, and may never fire it at all for a child it had to kill or
+-- that an engine edge case dropped. A query whose on_exit never arrives must
+-- NOT wedge the extension: a subsequent query must still run. (The earlier
+-- hard `running` block stayed stuck true forever in that case -- the exact
+-- "after the first error no subsequent command works" bug; the generation
+-- token supersedes instead. The synchronous default mock could not catch this.)
+-- ---------------------------------------------------------------------------
+
+local mock7 = make_mock({})
+load_extension(mock7)
+mock7.commands.SqlOpen(fixture_path) -- sync: connect, open buffer, populate tree
+mock7.spawn_mode = "defer"
+
+-- Query 1 errors, and we simulate its on_exit NEVER firing (a stuck child).
+mock7.buffer.lines = { "SELECT * FROM nosuchtable;" }
+mock7.commands.SqlRun("")
+equals(#mock7.pending_spawns, 1, "the first query's exit is pending (async, not yet delivered)")
+
+-- Query 2 (valid) must still launch -- it is not blocked by query 1's missing exit.
+mock7.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
+mock7.commands.SqlRun("")
+equals(#mock7.pending_spawns, 2, "a second query launches even though the first's exit never fired")
+
+-- Deliver ONLY query 2's exit (query 1 stays stuck forever).
+mock7.pending_spawns[2]()
+local body7 = mock7.views.sql_tool_results.render(nil)
+equals(body7.kind, "table", "the second query renders results despite the first's exit never arriving")
+equals(#body7.rows, 2, "the second query returned both rows")
+
+-- Now deliver query 1's late, stale exit: it is superseded, so it must be
+-- ignored rather than clobbering the newer results with its error.
+mock7.pending_spawns[1]()
+local body7b = mock7.views.sql_tool_results.render(nil)
+equals(body7b.kind, "table", "a superseded query's late exit does not overwrite newer results")
+equals(#body7b.rows, 2, "the newer results survive the stale exit")
 
 -- ---------------------------------------------------------------------------
 
