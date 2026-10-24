@@ -20,7 +20,11 @@ local MAX_RECENTS = 10
 
 -- Connection + results state. None of this is persisted except `recents`
 -- (via vimcode.storage); everything else is in-memory and reset on reload.
-local current_db = nil
+-- `current_adapter` is the engine driver (see "Database adapters" below) and
+-- `current_conn` the opaque handle it returned from open(); both nil until the
+-- first :SqlOpen.
+local current_adapter = nil
+local current_conn = nil
 local running = false
 local status_text = "no database open -- :SqlOpen <path.db>"
 local error_text = nil
@@ -120,6 +124,77 @@ local function rows_from_json(decoded)
   return cols, result_rows, result_values
 end
 
+-- ===========================================================================
+-- Database adapters
+--
+-- Everything engine-specific lives behind an adapter so the query runner,
+-- results grid, sort and recents code below stay database-agnostic. An adapter
+-- is a table:
+--
+--   kind            unique id, e.g. "sqlite"
+--   display         human name for messages, e.g. "SQLite"
+--   binary          the CLI executable driven via vimcode.loop.spawn
+--   open(target)          -> conn, nil   |   nil, err_string
+--                   validate a connection target and return an opaque conn
+--                   handle. SQLite is file-based, so it read-probes the path;
+--                   a server adapter would validate host/credentials instead.
+--   label(conn)           -> string      short name for messages / the seed line
+--   query_args(conn, sql) -> { arg, ... }
+--                   argv (after `binary`) that runs `sql` and prints a
+--                   machine-readable result to stdout.
+--   parse(stdout)         -> columns, rows, row_values   |   nil, err_string
+--                   turn that stdout into the grid's column/row/typed-value
+--                   shape (see rows_from_json), or an error to show instead.
+--
+-- Adding Postgres/MySQL later is a new entry in `adapters` plus its install
+-- command in manifest.toml -- nothing below this block changes.
+-- ===========================================================================
+
+local sqlite_adapter = {
+  kind = "sqlite",
+  display = "SQLite",
+  binary = "sqlite3",
+
+  open = function(target)
+    -- SQLite is file-based: a read probe (the same io.open latex.lua uses)
+    -- refuses a missing/unreadable path up front. Without it :SqlOpen would
+    -- "connect" to anything and sqlite3's create-on-open would turn a wrong
+    -- path into a later "no such table" rather than "no such file".
+    local probe = io.open(target, "r")
+    if probe == nil then
+      return nil, "no such file or not readable"
+    end
+    probe:close()
+    return { path = target }, nil
+  end,
+
+  label = function(conn)
+    return conn.path
+  end,
+
+  query_args = function(conn, sql)
+    -- The `--` is an end-of-options sentinel, not cosmetic. The query buffer
+    -- is seeded with a leading `-- <path>` comment, so a whole-buffer run
+    -- hands sqlite3 a `sql` starting with "--"; without `--` it parses that
+    -- leading dash as a flag and dies with `Error: unknown option: -`.
+    return { conn.path, "-json", "--", sql }
+  end,
+
+  parse = function(stdout)
+    local ok, decoded = pcall(vimcode.json.decode, stdout == "" and "[]" or stdout)
+    if not ok then
+      return nil, "could not parse sqlite3 output as JSON: " .. tostring(decoded)
+    end
+    return rows_from_json(decoded)
+  end,
+}
+
+local adapters = { [sqlite_adapter.kind] = sqlite_adapter }
+
+-- SQLite is the only adapter today, so it is the default. A future
+-- :SqlConnect that picks an engine would set current_adapter per connection.
+current_adapter = sqlite_adapter
+
 -- Opening the results view is done once, the first time a query runs.
 -- `vimcode.ui.open_view(..., {location = "tab"})` always opens a brand-new
 -- tab (there is no "focus the existing tab" mode in the engine), so this
@@ -140,7 +215,7 @@ end
 
 local function run_query(sql)
   sql = sql and sql:match("^%s*(.-)%s*$") or ""
-  if current_db == nil then
+  if current_conn == nil then
     vimcode.message("sql-tool: no database open -- :SqlOpen <path.db>")
     return
   end
@@ -159,14 +234,12 @@ local function run_query(sql)
   ensure_results_pane_open()
   vimcode.ui.refresh(RESULTS_VIEW)
 
+  -- Snapshot the adapter + connection for this query so the async callbacks
+  -- below use the engine that was current when it launched, even if the user
+  -- switches connections while it is in flight.
+  local adapter = current_adapter
   local out_chunks, err_chunks = {}, {}
-  -- The `--` is an end-of-options sentinel, not cosmetic. The query buffer is
-  -- seeded with a leading `-- <path>` comment (see open_db), so a whole-buffer
-  -- run hands `sqlite3` a `sql` string that starts with "--". Without the
-  -- sentinel, sqlite3 parses that leading dash as a command-line option and
-  -- dies with `Error: unknown option: -` before executing anything; `--` makes
-  -- it treat every following argument as positional SQL instead.
-  local ok_spawn, err = pcall(vimcode.loop.spawn, "sqlite3", { current_db, "-json", "--", sql }, {
+  local ok_spawn, err = pcall(vimcode.loop.spawn, adapter.binary, adapter.query_args(current_conn, sql), {
     on_stdout = function(chunk)
       out_chunks[#out_chunks + 1] = chunk
     end,
@@ -180,26 +253,27 @@ local function run_query(sql)
 
       if signal ~= nil then
         status_text = "error"
-        error_text = "sqlite3 was killed (signal " .. tostring(signal) .. ")"
+        error_text = adapter.binary .. " was killed (signal " .. tostring(signal) .. ")"
       elseif code ~= 0 then
         status_text = "error"
-        error_text = (stderr ~= "" and stderr) or ("sqlite3 exited with status " .. tostring(code))
+        error_text = (stderr ~= "" and stderr) or (adapter.binary .. " exited with status " .. tostring(code))
       else
-        local ok_json, decoded = pcall(vimcode.json.decode, stdout == "" and "[]" or stdout)
-        if not ok_json then
+        -- parse() returns (columns, rows, row_values) on success, or
+        -- (nil, err_string) when the engine's output could not be parsed.
+        local cols, parsed_rows, parsed_values = adapter.parse(stdout)
+        if cols == nil then
           status_text = "error"
-          error_text = "could not parse sqlite3 output as JSON: " .. tostring(decoded)
+          error_text = parsed_rows
         else
-          columns, rows, row_values = rows_from_json(decoded)
+          columns, rows, row_values = cols, parsed_rows, parsed_values
           status_text = "ok (" .. #rows .. " row(s))"
           error_text = nil
           if stderr ~= "" then
-            -- sqlite3 can print warnings to stderr on a clean
-            -- exit (e.g. deprecated pragma warnings). Fold the
-            -- warning into status_text rather than error_text:
-            -- render() below treats a non-nil error_text as
-            -- "hide the rows, show text instead", which would
-            -- otherwise discard rows sqlite3 did return.
+            -- A CLI can print warnings to stderr on a clean exit (e.g. a
+            -- deprecated-pragma notice). Fold the warning into status_text
+            -- rather than error_text: render() below treats a non-nil
+            -- error_text as "hide the rows, show text instead", which would
+            -- otherwise discard rows the query did return.
             status_text = status_text .. " -- warning: " .. stderr
           end
         end
@@ -212,27 +286,24 @@ local function run_query(sql)
   if not ok_spawn then
     running = false
     status_text = "error"
-    error_text = "could not start sqlite3: " .. tostring(err)
+    error_text = "could not start " .. adapter.binary .. ": " .. tostring(err)
     vimcode.ui.refresh(RESULTS_VIEW)
   end
 end
 
-local function open_db(path)
-  -- Refuse a path we cannot actually open for reading, and change no state if
-  -- so. `:SqlOpen` otherwise "connects" to anything, and because `sqlite3`
-  -- creates a missing database on first query, a wrong path never surfaces as
-  -- "no such file" -- it silently becomes an empty db and later a baffling
-  -- "no such table". A read probe (the same `io.open` latex.lua uses) catches
-  -- a missing or unreadable file up front; close the handle immediately, the
-  -- existence answer is all we wanted.
-  local probe = io.open(path, "r")
-  if probe == nil then
-    vimcode.message("sql-tool: cannot open " .. path .. " -- no such file or not readable")
+local function open_db(target)
+  -- Delegate target validation to the adapter, and change no state if it
+  -- fails. For SQLite this is the io.open read-probe (a missing/unreadable
+  -- path would otherwise "connect" and later surface as "no such table"
+  -- once sqlite3 creates the empty file on first query); a server adapter
+  -- would validate host/credentials here instead.
+  local conn, err = current_adapter.open(target)
+  if conn == nil then
+    vimcode.message("sql-tool: cannot open " .. target .. " -- " .. err)
     return
   end
-  probe:close()
-  current_db = path
-  remember_recent(path)
+  current_conn = conn
+  remember_recent(target)
   status_text = "connected -- no query run yet"
   error_text = nil
   columns, rows, row_values = {}, {}, {}
@@ -241,18 +312,18 @@ local function open_db(path)
     -- the active window's buffer -- there is no "re-focus an existing
     -- scratch buffer by name" mode in the engine. So this only runs on
     -- the first connection, seeded with a one-line comment naming the
-    -- database; later :SqlOpen / :SqlPickRecent calls intentionally
+    -- connection; later :SqlOpen / :SqlPickRecent calls intentionally
     -- skip it, which is what keeps your in-progress query untouched
     -- when you switch databases. `content` must be a real string, and
     -- `readonly` defaults to true unless set to false here -- both
     -- required for a buffer you can actually type SQL into.
     query_buffer_opened = true
-    vimcode.buf.open_scratch(QUERY_BUFFER_NAME, "-- " .. path .. "\n\n", {
+    vimcode.buf.open_scratch(QUERY_BUFFER_NAME, "-- " .. current_adapter.label(conn) .. "\n\n", {
       filetype = "sql",
       readonly = false,
     })
   end
-  vimcode.message("sql-tool: connected to " .. path)
+  vimcode.message("sql-tool: connected to " .. current_adapter.label(conn))
 end
 
 vimcode.command("SqlOpen", function(args)
