@@ -628,6 +628,10 @@ vimcode.ui.register_view(RESULTS_VIEW, {
   title = "SQL Results",
   icon = "",
   fallback_icon = "R",
+  -- Tab-only: the results grid is opened as an editor split, never browsed
+  -- from the activity bar, so suppress its sidebar panel (vimcode#2032).
+  -- Ignored (no-op) on an engine predating that option.
+  sidebar = false,
 
   render = function(_)
     if error_text then
@@ -1139,10 +1143,8 @@ end)
 -- `password` field), and a Connect button. On connect it opens the connection
 -- and saves it (minus any password) to the panel's saved-connection list.
 --
--- Like every register_view, this ALSO appears as its own activity-bar panel
--- (the engine registers a sidebar panel for every view); opening it as a tab
--- is the intended use. That extra sidebar icon is the known view-panel wart --
--- a tab-only view needs core support. See README "Known limitations".
+-- Registered `sidebar = false` (vimcode#2032) so it has no activity-bar icon
+-- of its own -- it is only ever opened as a tab via open_conn_dialog().
 -- ===========================================================================
 
 local conn_form = { engine = adapter_list[1].kind, name = "", values = {}, status = "" }
@@ -1160,6 +1162,9 @@ vimcode.ui.register_view(CONN_DIALOG, {
   title = "SQL Connection",
   icon = "\u{f1c0}",
   fallback_icon = "C",
+  -- Tab-only: opened via open_conn_dialog(), never from the activity bar, so
+  -- no sidebar icon (vimcode#2032). No-op on an engine predating the option.
+  sidebar = false,
 
   render = function(_)
     local adapter = adapters[conn_form.engine] or adapter_list[1]

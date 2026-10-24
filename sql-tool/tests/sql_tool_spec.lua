@@ -486,6 +486,8 @@ ok(mock1.commands.SqlOpen ~= nil, "SqlOpen command registered")
 ok(mock1.commands.SqlRun ~= nil, "SqlRun command registered")
 ok(mock1.commands.SqlPickRecent ~= nil, "SqlPickRecent command registered")
 ok(mock1.views.sql_tool_results ~= nil, "results view registered")
+equals(mock1.views.sql_tool_results.sidebar, false,
+  "results view registered sidebar=false (no stray activity-bar icon)")
 
 mock1.commands.SqlOpen(fixture_path)
 
@@ -729,6 +731,7 @@ load_extension(mock6)
 
 local dialog = mock6.views["sql_tool_conn"]
 ok(dialog ~= nil, "connection dialog view registered at load")
+equals(dialog.sidebar, false, "connection dialog registered sidebar=false (opened only as a tab)")
 ok(mock6.commands.SqlNewConnection ~= nil, "SqlNewConnection command registered")
 ok(mock6.commands.SqlConnections ~= nil, "SqlConnections command registered")
 

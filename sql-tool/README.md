@@ -120,12 +120,11 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   rows from a command instead. A plugin also can't declare default column
   widths (the column spec is still `title` + `editable` only). Both the header
   event and a declarable width are tracked upstream as JDonaghy/vimcode#2034.
-- **The connection dialog leaves a stray activity-bar icon.** It is a
-  `vimcode.ui.register_view` form opened as a tab, and the engine registers a
-  sidebar panel for *every* view (the same reason the results grid also shows
-  in the sidebar). There is no "tab-only view" option and a view's `render`
-  can't tell whether it is painting the sidebar or the tab, so the extra icon
-  can't be suppressed from Lua — it needs core support.
+- **Column headers are currently not drawn in the results grid.** A regression
+  landed upstream (the results grid's `kind = "table"` view shows its data rows
+  but no header row); the extension still supplies the column titles and
+  `:SqlSort` still reorders the rows, so this is a `vimcode`/quadraui table-
+  rendering regression, not a change here. Tracked as JDonaghy/vimcode#2037.
 - **A closed results split is not reopened.** The results pane opens once (as
   a split below the query buffer) and is reused across `:SqlRun` calls —
   `open_view` has no "focus/reopen the existing one" mode, only "open a brand
