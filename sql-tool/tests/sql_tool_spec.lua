@@ -434,6 +434,21 @@ equals(mock1.buffer.opts and mock1.buffer.opts.readonly, false, "query buffer op
 equals(mock1.buffer.name, "sql-tool query.sql", "query buffer has a stable, db-independent name")
 equals(storage.recents and storage.recents[1], fixture_path, "fixture path remembered as most recent")
 
+-- Regression: the seeded buffer's first line is a `-- <path>` comment, so a
+-- whole-buffer run hands sqlite3 a SQL string starting with "--". Without the
+-- `--` end-of-options sentinel in the spawn argv, sqlite3 rejects that as
+-- `unknown option: -` and nothing runs. Append a real query to the *seeded*
+-- buffer (do not replace it, which is what masked this bug before) and run the
+-- whole thing -- the way <leader>r does by default.
+do
+  mock1.buffer.lines[#mock1.buffer.lines + 1] = "SELECT * FROM t ORDER BY a;"
+  mock1.commands.SqlRun("")
+  local seeded = mock1.views.sql_tool_results.render(nil)
+  equals(seeded.kind, "table",
+    "whole-buffer run including the seeded '-- <path>' comment executes (no 'unknown option: -')")
+  equals(#seeded.rows, 2, "seeded-comment whole-buffer run returns both rows")
+end
+
 -- Simulate the user typing a query into the (now-current) buffer.
 mock1.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
 
@@ -521,9 +536,74 @@ equals(body5.kind, "table", "switching db via the recents picker reconnects sqli
 equals(body5.rows[1].cells[2], "y", "query after picker-switch ran against the picked database")
 
 -- ---------------------------------------------------------------------------
+-- Session 3: a nonexistent path is refused up front -- no query buffer, no
+-- recents churn, and a message explaining why -- rather than a silent
+-- "connected" that only fails later (sqlite3 would create an empty db on the
+-- first query, hiding the mistake as a baffling "no such table").
+-- ---------------------------------------------------------------------------
+
+local mock3 = make_mock({})
+load_extension(mock3)
+local missing = fresh_db_path() -- fresh_db_path removes the file it names, so this points at nothing
+mock3.commands.SqlOpen(missing)
+ok(mock3.buffer == nil, "SqlOpen on a missing path does not open a query buffer")
+ok(#mock3.messages > 0 and mock3.messages[#mock3.messages]:match("cannot open"),
+  "SqlOpen on a missing path reports it cannot open the file")
+
+-- ---------------------------------------------------------------------------
+-- Session 4: :SqlSort reorders results by a column, numeric-aware. The whole
+-- point is that a numeric column sorts numerically, not lexicographically
+-- ("1000" < "750" as strings, but 90 < 750 < 1000 as numbers), and that NULLs
+-- sort first ascending / last descending.
+-- ---------------------------------------------------------------------------
+
+local sort_fixture = fresh_db_path()
+sqlite_exec(sort_fixture,
+  "CREATE TABLE n (v INTEGER, label TEXT); " ..
+  "INSERT INTO n VALUES (1000, 'k'), (750, 'm'), (90, 'z'), (NULL, 'nullrow');")
+
+local mock4 = make_mock({})
+load_extension(mock4)
+mock4.commands.SqlOpen(sort_fixture)
+mock4.buffer.lines = { "SELECT v, label FROM n;" }
+mock4.commands.SqlRun("")
+
+-- Columns are displayed alphabetically: label (index 1), v (index 2).
+local pre_sort = mock4.views.sql_tool_results.render(nil)
+equals(pre_sort.columns[1].title, "label", "sort fixture: column 1 is label")
+equals(pre_sort.columns[2].title, "v", "sort fixture: column 2 is v")
+
+mock4.commands.SqlSort("v asc")
+local asc = mock4.views.sql_tool_results.render(nil)
+equals(asc.rows[1].cells[2], "", "null sorts first when ascending")
+equals(asc.rows[2].cells[2], "90", "numeric asc: 90 comes before 750/1000 (not lexicographic)")
+equals(asc.rows[3].cells[2], "750", "numeric asc: 750 second")
+equals(asc.rows[4].cells[2], "1000", "numeric asc: 1000 last")
+
+mock4.commands.SqlSort("v desc")
+local desc = mock4.views.sql_tool_results.render(nil)
+equals(desc.rows[1].cells[2], "1000", "numeric desc: 1000 first")
+equals(desc.rows[4].cells[2], "", "null sorts last when descending")
+
+-- A 1-based column index is accepted as well as a name.
+mock4.commands.SqlSort("1 asc")
+local by_index = mock4.views.sql_tool_results.render(nil)
+equals(by_index.rows[1].cells[1], "k", "string column sorted ascending by index (k < m < z)")
+equals(by_index.rows[4].cells[1], "z", "string column ascending puts z last")
+
+-- A bad column is reported, not silently ignored, and leaves rows untouched.
+local msgs_before = #mock4.messages
+mock4.commands.SqlSort("nosuchcol")
+ok(mock4.messages[#mock4.messages]:match("no such column"), "SqlSort on an unknown column reports it")
+local after_bad = mock4.views.sql_tool_results.render(nil)
+equals(after_bad.rows[1].cells[1], "k", "a failed sort leaves the existing order untouched")
+ok(#mock4.messages > msgs_before, "a failed sort still emits a message")
+
+-- ---------------------------------------------------------------------------
 
 os.remove(fixture_path)
 os.remove(other_fixture)
+os.remove(sort_fixture)
 
 if failures == 0 then
   print("OK " .. checks .. " checks passed")

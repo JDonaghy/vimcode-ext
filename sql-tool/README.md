@@ -12,9 +12,10 @@ call — so the editor never freezes while a query is in flight.
 
 | Command | Effect |
 |---|---|
-| `:SqlOpen <path.db>` | Connect to a sqlite3 database file. Remembered in recents. |
+| `:SqlOpen <path.db>` | Connect to a sqlite3 database file. The path must exist and be readable — a missing or unreadable path is refused up front (sqlite3 would otherwise create an empty db and the error would surface only later as "no such table"). Remembered in recents. |
 | `:SqlPickRecent` | Fuzzy-pick a previously opened database and switch to it. |
 | `:SqlRun` | Run the whole query buffer, or just lines `<start>,<end>` when given a hand-typed numeric range (e.g. `:SqlRun 3,7`). |
+| `:SqlSort <column\|index> [asc\|desc]` | Reorder the current result rows in place by one column, without re-querying. Numeric columns sort numerically (not lexicographically); `NULL`s sort first ascending / last descending. The column may be named or given as a 1-based index into the displayed columns. There is no click-a-header sort — see "Known limitations". |
 
 ## Keymaps
 
@@ -59,6 +60,14 @@ There is no visual-mode binding: see "Known limitations" below.
   non-editable; editing query results back into the database is explicitly
   out of scope for this extension (tracked as a separate, unfiled
   follow-on).
+- **Results columns cannot be resized, and there is no click-a-header sort.**
+  The `kind = "table"` plugin view exposes only `title` and `editable` per
+  column — no width — and emits no column/header event (only row
+  select/activate and cell-edit), so neither interactive column resizing nor
+  click-to-sort is reachable from Lua. `:SqlSort` works around the sort half
+  by reordering rows from a command instead. Both would need new surface in
+  `vimcode` core (a column width field + resize handling; a header/column
+  event). Tracked upstream in `vimcode` as JDonaghy/vimcode#2018.
 - **The results pane cannot be a side-by-side split.** `vimcode.ui.open_view`
   always opens a `kind = "table"` plugin view as a brand-new tab; there is
   no engine primitive that can place one as a sibling split of the query
@@ -101,8 +110,14 @@ To verify by hand in a real VimCode build:
    INSERT INTO t VALUES (1, 'x'), (2, 'y');"`.
 3. `:SqlOpen /tmp/smoke.db` — expect a status-bar message, and a `.sql`
    scratch buffer with SQL syntax highlighting.
-4. Type `SELECT * FROM t;` and press `<leader>r` — expect a new tab to open
-   with a table showing columns `a`, `b` and two rows.
+4. Type `SELECT * FROM t;` on a line below the seeded `-- <path>` comment and
+   press `<leader>r` — expect a new tab to open with a table showing columns
+   `a`, `b` and two rows. (The whole buffer, seed comment included, is run; the
+   leading `--` comment is passed to sqlite3 after a `--` end-of-options
+   sentinel so it is treated as SQL, not a command-line option.)
+   Separately, `:SqlOpen /tmp/does-not-exist.db` on a path that isn't there —
+   expect a `cannot open ... no such file or not readable` message and *no*
+   query buffer, rather than a silent "connected".
 5. Change the query to `SELECT * FROM nosuchtable;` and run again — expect
    the same results tab to update in place (not a second tab) showing
    sqlite3's error text instead of silently showing stale or empty rows,
