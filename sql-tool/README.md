@@ -68,8 +68,11 @@ There is no visual-mode binding: see "Known limitations" below.
   deduplicated by path.
 - `:SqlRun` reads the buffer (or a hand-typed numeric range), spawns
   `sqlite3 <db> -json '<query>'`, and shows the parsed rows in a results
-  view (`vimcode.ui.register_view`, `kind = "table"`) opened as its own
-  tab, reused across runs. Column names come from the union of keys
+  view (`vimcode.ui.register_view`, `kind = "table"`) opened as a horizontal
+  split *below* the query buffer (query on top, grid below), reused across
+  runs so both panes stay visible as you edit and re-run. (On an engine
+  without `open_view` split support it falls back to a tab.) Column names
+  come from the union of keys
   across every returned row (sorted, since `sqlite3 -json` does not
   guarantee key order and a query can return rows with different NULL
   columns present/absent).
@@ -123,12 +126,12 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   in the sidebar). There is no "tab-only view" option and a view's `render`
   can't tell whether it is painting the sidebar or the tab, so the extra icon
   can't be suppressed from Lua — it needs core support.
-- **The results pane cannot be a side-by-side split.** `vimcode.ui.open_view`
-  always opens a `kind = "table"` plugin view as a brand-new tab; there is
-  no engine primitive that can place one as a sibling split of the query
-  buffer. The results pane is therefore its own tab, reused across
-  `:SqlRun` calls rather than duplicated. A split-capable plugin-view API
-  would need to land in `vimcode` itself for this to change.
+- **A closed results split is not reopened.** The results pane opens once (as
+  a split below the query buffer) and is reused across `:SqlRun` calls —
+  `open_view` has no "focus/reopen the existing one" mode, only "open a brand
+  new one", so if you *close* the results split, later runs update it offscreen
+  with no way to bring it back short of reloading the extension. (Reopening a
+  closed view in place would need that missing `open_view` mode in `vimcode`.)
 - **There is no visual-mode `:SqlRun`.** `:'<,'>SqlRun` (vim-native visual
   range syntax) can never dispatch to a plugin command — any `'`-prefixed
   command name is routed to a dispatcher that only recognizes built-in

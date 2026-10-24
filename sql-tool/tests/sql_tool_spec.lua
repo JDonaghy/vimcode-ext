@@ -516,6 +516,9 @@ mock1.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
 mock1.commands.SqlRun("")
 
 ok(mock1.opened_views.sql_tool_results ~= nil, "results view opened on first run")
+equals(mock1.opened_views.sql_tool_results.location, "split",
+  "results open as a split (below the query buffer), not a background tab")
+equals(mock1.opened_views.sql_tool_results.side, "below", "results split is placed below")
 ok(#mock1.refresh_calls >= 2, "results view refreshed at least once before and after the query")
 
 local body1 = mock1.views.sql_tool_results.render(nil)
@@ -822,6 +825,30 @@ mock7.pending_spawns[1]()
 local body7b = mock7.views.sql_tool_results.render(nil)
 equals(body7b.kind, "table", "a superseded query's late exit does not overwrite newer results")
 equals(#body7b.rows, 2, "the newer results survive the stale exit")
+
+-- ---------------------------------------------------------------------------
+-- Session 8: the reported repro exactly -- a bad query, then a good one,
+-- delivered sequentially (each query's exit arrives before the next run). The
+-- good query must display its rows, not "nothing at all".
+-- ---------------------------------------------------------------------------
+
+local mock8 = make_mock({})
+load_extension(mock8)
+mock8.commands.SqlOpen(fixture_path)
+mock8.spawn_mode = "defer"
+
+mock8.buffer.lines = { "SELECT * FROM nosuchtable;" }
+mock8.commands.SqlRun("")
+mock8.pending_spawns[1]() -- query 1's exit: error
+local e8 = mock8.views.sql_tool_results.render(nil)
+equals(e8.kind, "text_view", "the bad query shows an error")
+
+mock8.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
+mock8.commands.SqlRun("")
+mock8.pending_spawns[2]() -- query 2's exit: rows
+local g8 = mock8.views.sql_tool_results.render(nil)
+equals(g8.kind, "table", "a good query after an error shows a table, not nothing")
+equals(#g8.rows, 2, "the good query shows its rows")
 
 -- ---------------------------------------------------------------------------
 

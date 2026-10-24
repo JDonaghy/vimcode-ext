@@ -302,22 +302,30 @@ local adapter_list = { sqlite_adapter }
 -- dialog's engine dropdown sets current_adapter per connection.
 current_adapter = sqlite_adapter
 
--- Opening the results view is done once, the first time a query runs.
--- `vimcode.ui.open_view(..., {location = "tab"})` always opens a brand-new
--- tab (there is no "focus the existing tab" mode in the engine), so this
--- guard is what keeps repeat `:SqlRun` calls from piling up duplicate
--- results tabs -- subsequent runs just call `vimcode.ui.refresh` instead.
+-- Open the results view once, the first time a query runs, as a horizontal
+-- split *below* the query buffer (query on top, grid below -- the usual SQL
+-- IDE layout). This keeps the grid on screen while you edit and re-run, so
+-- every run updates a pane you can actually see.
 --
--- A true side-by-side split with the query buffer is not possible: the
--- only engine primitive that can land a `kind = "table"` plugin view opens
--- it as a brand-new tab, never as a sibling split window. See README.md's
--- "Known limitations" section.
+-- This matters: `open_view` always opens a brand-new tab/window (there is no
+-- "focus the existing one" mode), so a plain tab would surface only on the
+-- FIRST run -- the tab opens and comes to the front. On later runs the guard
+-- below skips re-opening, and the refresh lands in that tab while it sits in
+-- the background behind the query buffer, which looks exactly like "I ran it
+-- and nothing happened". A split keeps both panes visible, so re-runs are
+-- always on screen.
+--
+-- `location = "split"` landed in vimcode#2009; fall back to a tab on an older
+-- engine that only knows `"tab"` (open_view raises on an unknown location).
 local function ensure_results_pane_open()
   if results_pane_opened then
     return
   end
   results_pane_opened = true
-  vimcode.ui.open_view(RESULTS_VIEW, { location = "tab" })
+  local ok = pcall(vimcode.ui.open_view, RESULTS_VIEW, { location = "split", side = "below" })
+  if not ok then
+    pcall(vimcode.ui.open_view, RESULTS_VIEW, { location = "tab" })
+  end
 end
 
 local function run_query(sql)
