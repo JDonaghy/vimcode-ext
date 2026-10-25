@@ -7,12 +7,13 @@
 -- rendered body of the registered results view.
 --
 -- Run it with:
---   lua5.4 sql_tool_spec.lua
--- from this directory. Requires `lua5.4` and `sqlite3` on PATH; both create
--- and delete a scratch file under /tmp. Neither binary is available in the
--- sandbox this test was written in, so it has been written and committed
--- WITHOUT being run -- see ../README.md's "Manual verification" section.
--- Treat it as a starting point for CI, not as proof the extension works.
+--   lua5.4 sql_tool_spec.lua      (or: luajit sql_tool_spec.lua)
+-- from this directory. Requires a Lua interpreter and `sqlite3` on PATH; it
+-- creates and deletes scratch files under /tmp. It is run during development
+-- with `luajit` + `sqlite3`. Two caveats (see ../README.md's "Manual
+-- verification"): it is not wired into CI, and `luajit` is Lua 5.1, not the
+-- Lua 5.4/mlua sandbox VimCode embeds -- so a real-build smoke is the real
+-- proof. Treat this as a fast regression net, not as proof the extension works.
 
 local failures = 0
 local checks = 0
@@ -257,6 +258,17 @@ local function make_mock(storage_backing)
     refresh_calls = {},
     command_run_calls = {},
     last_picker = nil,
+    panels = {},
+    panel_items = {},
+    panel_help = {},
+    handlers = {},
+    registers = {},
+    -- Spawn lifecycle control. "sync" (default) fires on_exit inside spawn()
+    -- like the original mock; "defer" captures each on_exit in pending_spawns
+    -- so a test can fire (or never fire) them out of band, exercising the real
+    -- engine's asynchronous on_exit the synchronous mock cannot.
+    spawn_mode = "sync",
+    pending_spawns = {},
   }
 
   mock.vimcode = {
@@ -277,6 +289,48 @@ local function make_mock(storage_backing)
     command_run = function(cmd)
       mock.command_run_calls[#mock.command_run_calls + 1] = cmd
     end,
+
+    -- Event registration: store the handler so the test can fire it directly.
+    on = function(event, fn)
+      mock.handlers[event] = fn
+    end,
+
+    -- Sidebar panel surface (vimcode.panel.*). Enough to drive the object
+    -- panel: register, help, per-section item lists, and parse_event, which
+    -- splits the "panel|section|id|key|index" event argument the engine sends.
+    panel = {
+      register = function(name, def)
+        mock.panels[name] = def
+        mock.panel_items[name] = mock.panel_items[name] or {}
+      end,
+      set_help = function(name, help)
+        mock.panel_help[name] = help
+      end,
+      set_items = function(name, section, items)
+        mock.panel_items[name] = mock.panel_items[name] or {}
+        mock.panel_items[name][section] = items
+      end,
+      set_hover = function() end,
+      parse_event = function(arg)
+        local parts = {}
+        for field in (arg .. "|"):gmatch("([^|]*)|") do
+          parts[#parts + 1] = field
+        end
+        return {
+          panel = parts[1] or "",
+          section = parts[2] or "",
+          id = parts[3] or "",
+          key = parts[4] or "",
+          index = tonumber(parts[5]) or 0,
+        }
+      end,
+    },
+
+    state = {
+      set_register = function(reg, text, _)
+        mock.registers[reg] = text
+      end,
+    },
 
     schedule = function(fn)
       -- Synchronous test harness: run on the "next idle tick" right now.
@@ -369,7 +423,14 @@ local function make_mock(storage_backing)
           opts.on_stderr(stderr)
         end
         if opts.on_exit then
-          opts.on_exit(code, nil)
+          if mock.spawn_mode == "defer" then
+            -- Capture the exit; the test fires it (or doesn't) explicitly.
+            mock.pending_spawns[#mock.pending_spawns + 1] = function()
+              opts.on_exit(code, nil)
+            end
+          else
+            opts.on_exit(code, nil)
+          end
         end
         return {
           write = function() end,
@@ -425,6 +486,8 @@ ok(mock1.commands.SqlOpen ~= nil, "SqlOpen command registered")
 ok(mock1.commands.SqlRun ~= nil, "SqlRun command registered")
 ok(mock1.commands.SqlPickRecent ~= nil, "SqlPickRecent command registered")
 ok(mock1.views.sql_tool_results ~= nil, "results view registered")
+equals(mock1.views.sql_tool_results.sidebar, false,
+  "results view registered sidebar=false (no stray activity-bar icon)")
 
 mock1.commands.SqlOpen(fixture_path)
 
@@ -434,13 +497,32 @@ equals(mock1.buffer.opts and mock1.buffer.opts.readonly, false, "query buffer op
 equals(mock1.buffer.name, "sql-tool query.sql", "query buffer has a stable, db-independent name")
 equals(storage.recents and storage.recents[1], fixture_path, "fixture path remembered as most recent")
 
+-- Regression: the seeded buffer's first line is a `-- <path>` comment, so a
+-- whole-buffer run hands sqlite3 a SQL string starting with "--". Without the
+-- `--` end-of-options sentinel in the spawn argv, sqlite3 rejects that as
+-- `unknown option: -` and nothing runs. Append a real query to the *seeded*
+-- buffer (do not replace it, which is what masked this bug before) and run the
+-- whole thing -- the way <leader>r does by default.
+do
+  mock1.buffer.lines[#mock1.buffer.lines + 1] = "SELECT * FROM t ORDER BY a;"
+  mock1.commands.SqlRun("")
+  local seeded = mock1.views.sql_tool_results.render(nil)
+  equals(seeded.kind, "table",
+    "whole-buffer run including the seeded '-- <path>' comment executes (no 'unknown option: -')")
+  equals(#seeded.rows, 2, "seeded-comment whole-buffer run returns both rows")
+end
+
 -- Simulate the user typing a query into the (now-current) buffer.
 mock1.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
 
 mock1.commands.SqlRun("")
 
 ok(mock1.opened_views.sql_tool_results ~= nil, "results view opened on first run")
+equals(mock1.opened_views.sql_tool_results.location, "tab", "results open as their own tab")
 ok(#mock1.refresh_calls >= 2, "results view refreshed at least once before and after the query")
+-- A completion message is printed so a background re-run isn't silent.
+ok(mock1.messages[#mock1.messages] and mock1.messages[#mock1.messages]:match("row"),
+  "a successful run announces its row count in the status line")
 
 local body1 = mock1.views.sql_tool_results.render(nil)
 equals(body1.kind, "table", "render() returns a table body for a successful query")
@@ -452,6 +534,31 @@ equals(body1.rows[1].cells[1], "1", "row 1 column a")
 equals(body1.rows[1].cells[2], "x", "row 1 column b")
 equals(body1.rows[2].cells[1], "2", "row 2 column a")
 equals(body1.rows[2].cells[2], "y", "row 2 column b")
+
+-- #2034: each results column declares a `min_width` floored at its header
+-- width, so a column name can't be squeezed to an unreadable sliver.
+equals(body1.columns[1].min_width, #"a", "column 'a' declares min_width = its header width")
+equals(body1.columns[2].min_width, #"b", "column 'b' declares min_width = its header width")
+
+-- #2034: a header click is delivered to on_event. The engine itself reorders
+-- the painted rows (numeric-aware, 3-state); our handler only mirrors that
+-- cycle (unsorted -> asc -> desc -> unsorted) onto the status line, and must
+-- NOT reorder our own rows. Column 'a' is display index 0 (0-based `col`).
+ok(mock1.views.sql_tool_results.on_event ~= nil, "results view registers an on_event handler")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("sorted by a asc"), "first header click reports asc")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("sorted by a desc"), "second click on same header reports desc")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("cleared sort on a"), "third click clears the sort")
+local after_click = mock1.views.sql_tool_results.render(nil)
+equals(after_click.rows[1].cells[1], "1",
+  "a header click does not reorder our own rows (the engine's overlay paints the order)")
+-- A non-header event, and an out-of-range column index, are both ignored.
+local msgs_pre_hdr = #mock1.messages
+mock1.views.sql_tool_results.on_event(nil, { kind = "ItemSelected", index = 0 })
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 99 })
+equals(#mock1.messages, msgs_pre_hdr, "a non-header event and an out-of-range header click are ignored")
 
 -- ---------------------------------------------------------------------------
 -- Session 1, continued: a failing query must surface an error and must not
@@ -521,9 +628,262 @@ equals(body5.kind, "table", "switching db via the recents picker reconnects sqli
 equals(body5.rows[1].cells[2], "y", "query after picker-switch ran against the picked database")
 
 -- ---------------------------------------------------------------------------
+-- Session 3: a nonexistent path is refused up front -- no query buffer, no
+-- recents churn, and a message explaining why -- rather than a silent
+-- "connected" that only fails later (sqlite3 would create an empty db on the
+-- first query, hiding the mistake as a baffling "no such table").
+-- ---------------------------------------------------------------------------
+
+local mock3 = make_mock({})
+load_extension(mock3)
+local missing = fresh_db_path() -- fresh_db_path removes the file it names, so this points at nothing
+mock3.commands.SqlOpen(missing)
+ok(mock3.buffer == nil, "SqlOpen on a missing path does not open a query buffer")
+ok(#mock3.messages > 0 and mock3.messages[#mock3.messages]:match("cannot open"),
+  "SqlOpen on a missing path reports it cannot open the file")
+
+-- ---------------------------------------------------------------------------
+-- Session 4: :SqlSort reorders results by a column, numeric-aware. The whole
+-- point is that a numeric column sorts numerically, not lexicographically
+-- ("1000" < "750" as strings, but 90 < 750 < 1000 as numbers), and that NULLs
+-- sort first ascending / last descending.
+-- ---------------------------------------------------------------------------
+
+local sort_fixture = fresh_db_path()
+sqlite_exec(sort_fixture,
+  "CREATE TABLE n (v INTEGER, label TEXT); " ..
+  "INSERT INTO n VALUES (1000, 'k'), (750, 'm'), (90, 'z'), (NULL, 'nullrow');")
+
+local mock4 = make_mock({})
+load_extension(mock4)
+mock4.commands.SqlOpen(sort_fixture)
+mock4.buffer.lines = { "SELECT v, label FROM n;" }
+mock4.commands.SqlRun("")
+
+-- Columns are displayed alphabetically: label (index 1), v (index 2).
+local pre_sort = mock4.views.sql_tool_results.render(nil)
+equals(pre_sort.columns[1].title, "label", "sort fixture: column 1 is label")
+equals(pre_sort.columns[2].title, "v", "sort fixture: column 2 is v")
+
+mock4.commands.SqlSort("v asc")
+local asc = mock4.views.sql_tool_results.render(nil)
+equals(asc.rows[1].cells[2], "", "null sorts first when ascending")
+equals(asc.rows[2].cells[2], "90", "numeric asc: 90 comes before 750/1000 (not lexicographic)")
+equals(asc.rows[3].cells[2], "750", "numeric asc: 750 second")
+equals(asc.rows[4].cells[2], "1000", "numeric asc: 1000 last")
+
+mock4.commands.SqlSort("v desc")
+local desc = mock4.views.sql_tool_results.render(nil)
+equals(desc.rows[1].cells[2], "1000", "numeric desc: 1000 first")
+equals(desc.rows[4].cells[2], "", "null sorts last when descending")
+
+-- A 1-based column index is accepted as well as a name.
+mock4.commands.SqlSort("1 asc")
+local by_index = mock4.views.sql_tool_results.render(nil)
+equals(by_index.rows[1].cells[1], "k", "string column sorted ascending by index (k < m < z)")
+equals(by_index.rows[4].cells[1], "z", "string column ascending puts z last")
+
+-- A bad column is reported, not silently ignored, and leaves rows untouched.
+local msgs_before = #mock4.messages
+mock4.commands.SqlSort("nosuchcol")
+ok(mock4.messages[#mock4.messages]:match("no such column"), "SqlSort on an unknown column reports it")
+local after_bad = mock4.views.sql_tool_results.render(nil)
+equals(after_bad.rows[1].cells[1], "k", "a failed sort leaves the existing order untouched")
+ok(#mock4.messages > msgs_before, "a failed sort still emits a message")
+
+-- ---------------------------------------------------------------------------
+-- Session 5: the database object panel. The panel is registered at load;
+-- connecting populates Tables/Views from the catalog query; Enter and
+-- right-click on a table run "Select top N" / expose actions.
+-- ---------------------------------------------------------------------------
+
+local mock5 = make_mock({})
+load_extension(mock5)
+ok(mock5.panels["sql_tool"] ~= nil, "database panel registered at load")
+
+mock5.commands.SqlOpen(fixture_path) -- fixture has one table `t`, no views
+local tables_section = mock5.panel_items["sql_tool"] and mock5.panel_items["sql_tool"]["Tables"]
+ok(tables_section ~= nil and #tables_section == 1, "connecting populates the Tables section (one table)")
+equals(tables_section[1].text, "t", "the fixture table 't' is listed in the panel")
+equals(#(mock5.panel_items["sql_tool"]["Views"] or {}), 0, "no views listed for the fixture")
+
+-- Enter on the table runs SELECT * ... LIMIT N into the results grid.
+mock5.handlers["panel_select"]("sql_tool|Tables|t||0")
+local panel_sel = mock5.views.sql_tool_results.render(nil)
+equals(panel_sel.kind, "table", "selecting a panel table runs a query into the results grid")
+equals(#panel_sel.rows, 2, "select-top-N returned the fixture's two rows")
+
+-- Right-click opens an actions picker; "Copy name" copies the object name.
+mock5.handlers["panel_context_menu"]("sql_tool|Tables|t||0")
+ok(mock5.last_picker ~= nil and #mock5.last_picker.items == 2, "right-click opens a two-action picker")
+mock5.last_picker.on_select("copy")
+equals(mock5.registers["+"], "t", "the copy-name action copies the object name to the clipboard")
+
+-- Tab-expanding a table lazily loads its columns as indented child rows.
+mock5.handlers["panel_expand"]("sql_tool|Tables|t||0")
+local expanded_tables = mock5.panel_items["sql_tool"]["Tables"]
+equals(#expanded_tables, 3, "expanding table 't' adds its two columns as child rows")
+equals(expanded_tables[1].text, "t", "the table row stays first after expansion")
+ok(expanded_tables[1].expanded == true, "the expanded table row is marked expanded")
+equals(expanded_tables[2].text, "a", "first column 'a' listed in definition order")
+equals(expanded_tables[2].parent_id, "t", "column rows are children of their table")
+equals(expanded_tables[2].indent, 1, "column rows are indented under the table")
+equals(expanded_tables[3].text, "b", "second column 'b' listed after 'a'")
+
+-- Selecting a column copies its name.
+mock5.handlers["panel_select"]("sql_tool|Tables|col::t::b||0")
+equals(mock5.registers["+"], "b", "selecting a column copies the column name to the clipboard")
+
+-- Collapsing hides the column children again.
+mock5.handlers["panel_collapse"]("sql_tool|Tables|t||0")
+equals(#mock5.panel_items["sql_tool"]["Tables"], 1, "collapsing a table hides its column children")
+
+-- The Disconnect action key 'd' (panel_action, from anywhere in the panel)
+-- clears the tree.
+mock5.handlers["panel_action"]("sql_tool|Connection|__status__|d|0")
+equals(#(mock5.panel_items["sql_tool"]["Tables"] or {}), 0, "disconnect clears the Tables tree")
+ok(mock5.messages[#mock5.messages]:match("disconnected"), "disconnect reports it")
+
+-- ---------------------------------------------------------------------------
+-- Session 6: the connection dialog (a register_view form). Filling in a name
+-- and a path and clicking Connect opens the database, populates the tree, and
+-- saves the connection -- which then appears in the panel's Connection section
+-- and can be reconnected from the connect picker.
+-- ---------------------------------------------------------------------------
+
+local storage6 = {}
+local mock6 = make_mock(storage6)
+load_extension(mock6)
+
+local dialog = mock6.views["sql_tool_conn"]
+ok(dialog ~= nil, "connection dialog view registered at load")
+equals(dialog.sidebar, false, "connection dialog registered sidebar=false (opened only as a tab)")
+ok(mock6.commands.SqlNewConnection ~= nil, "SqlNewConnection command registered")
+ok(mock6.commands.SqlConnections ~= nil, "SqlConnections command registered")
+
+-- The dialog renders a field stack with a name, an engine dropdown, the
+-- SQLite path field, and a Connect button.
+local form = dialog.render(nil)
+ok(form.fields ~= nil, "dialog renders a field stack")
+local has_path, has_connect = false, false
+for _, f in ipairs(form.fields) do
+  if f.id == "f:path" then has_path = true end
+  if f.id == "connect" and f.type == "button" then has_connect = true end
+end
+ok(has_path, "dialog shows the SQLite 'path' field")
+ok(has_connect, "dialog has a Connect button")
+
+-- Fill in the form and click Connect.
+dialog.on_event(nil, { kind = "TextChanged", widget_id = "name", value = "myfix" })
+dialog.on_event(nil, { kind = "TextChanged", widget_id = "f:path", value = fixture_path })
+dialog.on_event(nil, { kind = "ButtonClicked", widget_id = "connect" })
+
+local dlg_tables = mock6.panel_items["sql_tool"]["Tables"]
+ok(dlg_tables and #dlg_tables == 1 and dlg_tables[1].text == "t",
+  "dialog Connect opened the database and populated the tree")
+
+equals(storage6.connections and #storage6.connections, 1, "the connection was persisted")
+equals(storage6.connections[1].name, "myfix", "the saved connection kept its name")
+equals(storage6.connections[1].values.path, fixture_path, "the saved connection kept its path")
+local conn_section = mock6.panel_items["sql_tool"]["Connection"]
+ok(#conn_section >= 2, "the saved connection appears below the toolbar row")
+equals(conn_section[2].text, "myfix", "the saved connection row shows its name")
+
+-- Reconnecting from a saved config (as the panel's connect picker does).
+mock6.commands.SqlConnections("")
+ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
+  "SqlConnections lists the one saved connection")
+mock6.last_picker.on_select(1)
+local reconn_tables = mock6.panel_items["sql_tool"]["Tables"]
+ok(reconn_tables and #reconn_tables == 1, "connecting from a saved connection repopulates the tree")
+
+-- The panel registers a real clickable toolbar; its buttons drive the same
+-- actions as the c/n/d/r keys and fire panel_toolbar("<panel>|<id>").
+local toolbar = mock6.panels["sql_tool"].toolbar
+ok(toolbar ~= nil and #toolbar == 4, "panel registers a four-button toolbar")
+equals(toolbar[1].id, "connect", "first toolbar button is Connect")
+equals(toolbar[3].id, "disconnect", "third toolbar button is Disconnect")
+
+-- Clicking Disconnect via the toolbar clears the tree.
+mock6.handlers["panel_toolbar"]("sql_tool|disconnect")
+equals(#(mock6.panel_items["sql_tool"]["Tables"] or {}), 0, "toolbar Disconnect clears the tree")
+
+-- Clicking Connect via the toolbar opens the connect picker (one saved conn),
+-- and picking it repopulates the tree.
+mock6.handlers["panel_toolbar"]("sql_tool|connect")
+ok(mock6.last_picker ~= nil and #mock6.last_picker.items == 1,
+  "toolbar Connect opens the connect picker")
+mock6.last_picker.on_select(1)
+equals(#mock6.panel_items["sql_tool"]["Tables"], 1,
+  "connecting from the toolbar picker repopulates the tree")
+
+-- ---------------------------------------------------------------------------
+-- Session 7: asynchronous query lifecycle. The real engine fires on_exit on a
+-- later idle tick, and may never fire it at all for a child it had to kill or
+-- that an engine edge case dropped. A query whose on_exit never arrives must
+-- NOT wedge the extension: a subsequent query must still run. (The earlier
+-- hard `running` block stayed stuck true forever in that case -- the exact
+-- "after the first error no subsequent command works" bug; the generation
+-- token supersedes instead. The synchronous default mock could not catch this.)
+-- ---------------------------------------------------------------------------
+
+local mock7 = make_mock({})
+load_extension(mock7)
+mock7.commands.SqlOpen(fixture_path) -- sync: connect, open buffer, populate tree
+mock7.spawn_mode = "defer"
+
+-- Query 1 errors, and we simulate its on_exit NEVER firing (a stuck child).
+mock7.buffer.lines = { "SELECT * FROM nosuchtable;" }
+mock7.commands.SqlRun("")
+equals(#mock7.pending_spawns, 1, "the first query's exit is pending (async, not yet delivered)")
+
+-- Query 2 (valid) must still launch -- it is not blocked by query 1's missing exit.
+mock7.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
+mock7.commands.SqlRun("")
+equals(#mock7.pending_spawns, 2, "a second query launches even though the first's exit never fired")
+
+-- Deliver ONLY query 2's exit (query 1 stays stuck forever).
+mock7.pending_spawns[2]()
+local body7 = mock7.views.sql_tool_results.render(nil)
+equals(body7.kind, "table", "the second query renders results despite the first's exit never arriving")
+equals(#body7.rows, 2, "the second query returned both rows")
+
+-- Now deliver query 1's late, stale exit: it is superseded, so it must be
+-- ignored rather than clobbering the newer results with its error.
+mock7.pending_spawns[1]()
+local body7b = mock7.views.sql_tool_results.render(nil)
+equals(body7b.kind, "table", "a superseded query's late exit does not overwrite newer results")
+equals(#body7b.rows, 2, "the newer results survive the stale exit")
+
+-- ---------------------------------------------------------------------------
+-- Session 8: the reported repro exactly -- a bad query, then a good one,
+-- delivered sequentially (each query's exit arrives before the next run). The
+-- good query must display its rows, not "nothing at all".
+-- ---------------------------------------------------------------------------
+
+local mock8 = make_mock({})
+load_extension(mock8)
+mock8.commands.SqlOpen(fixture_path)
+mock8.spawn_mode = "defer"
+
+mock8.buffer.lines = { "SELECT * FROM nosuchtable;" }
+mock8.commands.SqlRun("")
+mock8.pending_spawns[1]() -- query 1's exit: error
+local e8 = mock8.views.sql_tool_results.render(nil)
+equals(e8.kind, "text_view", "the bad query shows an error")
+
+mock8.buffer.lines = { "SELECT * FROM t ORDER BY a;" }
+mock8.commands.SqlRun("")
+mock8.pending_spawns[2]() -- query 2's exit: rows
+local g8 = mock8.views.sql_tool_results.render(nil)
+equals(g8.kind, "table", "a good query after an error shows a table, not nothing")
+equals(#g8.rows, 2, "the good query shows its rows")
+
+-- ---------------------------------------------------------------------------
 
 os.remove(fixture_path)
 os.remove(other_fixture)
+os.remove(sort_fixture)
 
 if failures == 0 then
   print("OK " .. checks .. " checks passed")
