@@ -327,8 +327,11 @@ local function make_mock(storage_backing)
     },
 
     state = {
-      set_register = function(reg, text, _)
+      set_register = function(reg, text, linewise)
         mock.registers[reg] = text
+        -- Keep the full last call so a test can assert the register char and
+        -- the charwise/linewise flag, not just the text landing in `+`.
+        mock.last_set_register = { reg = reg, text = text, linewise = linewise }
       end,
     },
 
@@ -559,6 +562,88 @@ local msgs_pre_hdr = #mock1.messages
 mock1.views.sql_tool_results.on_event(nil, { kind = "ItemSelected", index = 0 })
 mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 99 })
 equals(#mock1.messages, msgs_pre_hdr, "a non-header event and an out-of-range header click are ignored")
+
+equals(mock1.commands.SqlCopyResults ~= nil, true, "SqlCopyResults command registered")
+
+-- ---------------------------------------------------------------------------
+-- :SqlCopyResults formats the WHOLE result set and writes it to the "+"
+-- register (the OS clipboard). Runs in its own throwaway session + database so
+-- it can use a fixture with the tricky values each format must handle without
+-- polluting the shared fixture the panel/catalog checks inspect: a comma + an
+-- embedded double quote (CSV quoting), an embedded tab (TSV collapses it, JSON
+-- escapes it), a pipe (Markdown escapes it) and a NULL (empty field / JSON
+-- null / empty md cell). Column order is the sorted union c1,c2,c3; row order
+-- is query order.
+-- ---------------------------------------------------------------------------
+
+local function has(haystack, needle)
+  return haystack ~= nil and haystack:find(needle, 1, true) ~= nil
+end
+
+do
+  local copy_db = fresh_db_path()
+  sqlite_exec(copy_db,
+    "CREATE TABLE weird (c1 TEXT, c2 TEXT, c3 INTEGER);"
+    .. " INSERT INTO weird VALUES ('comma,\"q\"', 'tab' || char(9) || 'x', 7);"
+    .. " INSERT INTO weird VALUES ('pipe|y', NULL, NULL);")
+  local mc = make_mock({})
+  load_extension(mc)
+  mc.commands.SqlOpen(copy_db)
+  mc.buffer.lines = { "SELECT c1, c2, c3 FROM weird ORDER BY c1;" }
+  mc.commands.SqlRun("")
+  equals(mc.views.sql_tool_results.render(nil).kind, "table", "weird-values query renders a table")
+
+  mc.commands.SqlCopyResults("csv")
+  local copy_csv = mc.registers["+"]
+  ok(has(copy_csv, "c1,c2,c3\n"), "csv emits a header row first")
+  ok(has(copy_csv, '"comma,""q"""'), "csv quotes a comma/quote field and doubles the quote (RFC 4180)")
+  ok(has(copy_csv, "\tx,7"), "csv leaves an embedded tab unquoted (tab is not a CSV special)")
+  ok(has(copy_csv, "pipe|y,,"), "csv renders two trailing NULLs as empty fields")
+  equals(mc.last_set_register.reg, "+", "copy writes the \"+\" (system clipboard) register")
+  equals(mc.last_set_register.linewise, false, "copy writes charwise, not linewise")
+
+  mc.commands.SqlCopyResults("tsv")
+  local copy_tsv = mc.registers["+"]
+  ok(has(copy_tsv, "c1\tc2\tc3"), "tsv emits a tab-joined header")
+  ok(has(copy_tsv, "tab x"), "tsv collapses an embedded tab in a value to a space")
+  ok(has(copy_tsv, 'comma,"q"'), "tsv leaves commas/quotes in a value untouched")
+
+  mc.commands.SqlCopyResults("json")
+  local copy_json = mc.registers["+"]
+  ok(has(copy_json, '"c3": 7'), "json keeps a numeric cell as a bare number")
+  ok(has(copy_json, '"c3": null'), "json renders NULL as the json null literal")
+  ok(has(copy_json, '"c2": "tab\\tx"'), "json escapes an embedded tab as \\t")
+  ok(has(copy_json, '"c1": "comma,\\"q\\""'), "json escapes an embedded double quote")
+
+  mc.commands.SqlCopyResults("md")
+  local copy_md = mc.registers["+"]
+  ok(has(copy_md, "| c1 | c2 | c3 |"), "md emits a header row")
+  ok(has(copy_md, "| --- | --- | --- |"), "md emits the separator row")
+  ok(has(copy_md, "| pipe\\|y |  |  |"), "md escapes a pipe and renders NULLs as empty cells")
+
+  -- Default format is csv; aliases resolve; an unknown format is refused
+  -- without touching the clipboard.
+  mc.commands.SqlCopyResults("")
+  ok(has(mc.registers["+"], "c1,c2,c3\n"), "no-arg copy defaults to csv")
+  mc.commands.SqlCopyResults("markdown")
+  ok(has(mc.registers["+"], "| --- | --- | --- |"), "\"markdown\" is an alias for md")
+  local reg_before_bad = mc.registers["+"]
+  local msgs_before_bad = #mc.messages
+  mc.commands.SqlCopyResults("xml")
+  equals(mc.registers["+"], reg_before_bad, "an unknown format leaves the clipboard unchanged")
+  ok(mc.messages[#mc.messages]:match("unknown format"), "an unknown format reports the error")
+  ok(#mc.messages > msgs_before_bad, "an unknown format still emits a message")
+end
+
+-- Copy with no result set yet (a fresh session, no query) writes nothing.
+do
+  local mock_empty = make_mock({})
+  load_extension(mock_empty)
+  mock_empty.commands.SqlCopyResults("")
+  equals(mock_empty.registers["+"], nil, "copy with no results writes nothing to the clipboard")
+  ok(mock_empty.messages[#mock_empty.messages]:match("nothing to copy"),
+    "copy with no results reports nothing to copy")
+end
 
 -- ---------------------------------------------------------------------------
 -- Session 1, continued: a failing query must surface an error and must not

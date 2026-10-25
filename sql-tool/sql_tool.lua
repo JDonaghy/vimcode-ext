@@ -640,6 +640,183 @@ vimcode.command("SqlSort", function(args)
   vimcode.message("sql-tool: sorted by " .. columns[ci] .. (descending and " desc" or " asc"))
 end)
 
+-- ===========================================================================
+-- Copying the result set to the clipboard (:SqlCopyResults)
+--
+-- Formats the WHOLE current result set and writes it to the system clipboard.
+-- Writing the "+" (or "*") register is routed to the OS clipboard by the
+-- engine (confirmed: core/engine/plugins.rs applies plugin register writes and
+-- bridges "+"/"*" through its clipboard callback), so this needs no extra
+-- binding. We format the decoded `row_values`, NOT the painted `rows.cells`
+-- strings, so a NULL can render as an empty field / JSON `null` and a numeric
+-- cell can stay a JSON number -- things the display strings have already lost.
+--
+-- Row order is `row_values`'s current order: query order, or `:SqlSort` order
+-- if the user ran it (it reorders `row_values` in place). A *header-click*
+-- sort does NOT reorder `row_values` (the engine reorders only the painted
+-- overlay -- see the on_event note above), so a copy reflects query/`:SqlSort`
+-- order, not a header-click-sorted view. `:SqlSort` is the way to copy in a
+-- specific order.
+-- ===========================================================================
+
+-- A cell is SQL NULL when the key was absent (nil) or decoded to the json.null
+-- sentinel. The copy formatters own their own NULL policy per format.
+local function copy_is_null(v)
+  return v == nil or v == vimcode.json.null
+end
+
+-- Scalar -> plain display text for the CSV/TSV/Markdown formats. NULL -> ""
+-- (an empty field), booleans -> true/false, everything else -> its text.
+local function copy_scalar_text(v)
+  if copy_is_null(v) then
+    return ""
+  elseif v == true then
+    return "true"
+  elseif v == false then
+    return "false"
+  else
+    return tostring(v)
+  end
+end
+
+-- RFC 4180: a field is quoted iff it contains a comma, a double quote, CR or
+-- LF; an embedded double quote is doubled.
+local function csv_field(v)
+  local s = copy_scalar_text(v)
+  if s:find('[,"\r\n]') then
+    s = '"' .. s:gsub('"', '""') .. '"'
+  end
+  return s
+end
+
+-- TSV has no standard quoting, so collapse any embedded tab/CR/LF in a value
+-- to a single space rather than emit a field that breaks the row/column grid.
+local function tsv_field(v)
+  return (copy_scalar_text(v):gsub("[\t\r\n]", " "))
+end
+
+-- A GitHub-flavored Markdown table cell: escape the column separator `|` and
+-- flatten newlines to a space so one value stays on one row.
+local function md_field(v)
+  return (copy_scalar_text(v):gsub("|", "\\|"):gsub("[\r\n]", " "))
+end
+
+-- JSON scalar with full string escaping. NULL -> null, booleans -> literals,
+-- a finite number -> its text; NaN/Inf (which JSON can't represent) and any
+-- other value fall back to a quoted, escaped string.
+local function json_scalar(v)
+  if copy_is_null(v) then
+    return "null"
+  elseif v == true then
+    return "true"
+  elseif v == false then
+    return "false"
+  elseif type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
+    return tostring(v)
+  end
+  local s = tostring(v):gsub('[%z\1-\31\\"]', function(c)
+    local named = {
+      ['"'] = '\\"', ['\\'] = '\\\\', ['\b'] = '\\b',
+      ['\f'] = '\\f', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t',
+    }
+    return named[c] or string.format('\\u%04x', string.byte(c))
+  end)
+  return '"' .. s .. '"'
+end
+
+local function row_line(cols, vals, field_fn, sep)
+  local out = {}
+  for i = 1, #cols do
+    out[i] = field_fn(vals[i])
+  end
+  return table.concat(out, sep)
+end
+
+local function header_line(cols, field_fn, sep)
+  local out = {}
+  for i, name in ipairs(cols) do
+    out[i] = field_fn(name)
+  end
+  return table.concat(out, sep)
+end
+
+local function to_csv(cols, values)
+  local lines = { header_line(cols, csv_field, ",") }
+  for _, vals in ipairs(values) do
+    lines[#lines + 1] = row_line(cols, vals, csv_field, ",")
+  end
+  return table.concat(lines, "\n") .. "\n"
+end
+
+local function to_tsv(cols, values)
+  local lines = { header_line(cols, tsv_field, "\t") }
+  for _, vals in ipairs(values) do
+    lines[#lines + 1] = row_line(cols, vals, tsv_field, "\t")
+  end
+  return table.concat(lines, "\n") .. "\n"
+end
+
+-- An array of objects, one per row, keys in the declared column order. Built
+-- as text (not a Lua table handed to an encoder) so the key order is
+-- deterministic -- a table keyed by column name would not preserve it.
+local function to_json(cols, values)
+  if #values == 0 then
+    return "[]\n"
+  end
+  local objs = {}
+  for _, vals in ipairs(values) do
+    local parts = {}
+    for i, name in ipairs(cols) do
+      parts[i] = json_scalar(name) .. ": " .. json_scalar(vals[i])
+    end
+    objs[#objs + 1] = "  { " .. table.concat(parts, ", ") .. " }"
+  end
+  return "[\n" .. table.concat(objs, ",\n") .. "\n]\n"
+end
+
+local function to_md(cols, values)
+  local seps = {}
+  for i = 1, #cols do
+    seps[i] = "---"
+  end
+  local lines = {
+    "| " .. header_line(cols, md_field, " | ") .. " |",
+    "| " .. table.concat(seps, " | ") .. " |",
+  }
+  for _, vals in ipairs(values) do
+    lines[#lines + 1] = "| " .. row_line(cols, vals, md_field, " | ") .. " |"
+  end
+  return table.concat(lines, "\n") .. "\n"
+end
+
+local COPY_FORMATS = {
+  csv = { fn = to_csv, label = "CSV" },
+  tsv = { fn = to_tsv, label = "TSV" },
+  json = { fn = to_json, label = "JSON" },
+  md = { fn = to_md, label = "Markdown" },
+}
+COPY_FORMATS.markdown = COPY_FORMATS.md
+COPY_FORMATS.tab = COPY_FORMATS.tsv
+
+vimcode.command("SqlCopyResults", function(args)
+  local fmt = ((args or ""):match("^%s*(.-)%s*$")):lower()
+  if fmt == "" then
+    fmt = "csv"
+  end
+  local spec = COPY_FORMATS[fmt]
+  if not spec then
+    vimcode.message("sql-tool: unknown format '" .. fmt .. "' -- use csv | tsv | json | md")
+    return
+  end
+  if #columns == 0 then
+    vimcode.message("sql-tool: nothing to copy (run a query first)")
+    return
+  end
+  vimcode.state.set_register("+", spec.fn(columns, row_values), false)
+  vimcode.message(string.format(
+    "sql-tool: copied %d rows x %d cols as %s to clipboard", #rows, #columns, spec.label))
+end)
+
 vimcode.keymap.set("n", "<leader>r", function()
   vimcode.command_run("SqlRun")
 end)
