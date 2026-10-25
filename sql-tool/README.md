@@ -42,7 +42,7 @@ saved connection from a picker.
 | `:SqlOpen <path.db>` | Connect to a sqlite3 database file. The path must exist and be readable — a missing or unreadable path is refused up front (sqlite3 would otherwise create an empty db and the error would surface only later as "no such table"). Remembered in recents. |
 | `:SqlPickRecent` | Fuzzy-pick a previously opened database and switch to it. |
 | `:SqlRun` | Run the whole query buffer, or just lines `<start>,<end>` when given a hand-typed numeric range (e.g. `:SqlRun 3,7`). |
-| `:SqlSort <column\|index> [asc\|desc]` | Reorder the current result rows in place by one column, without re-querying. Numeric columns sort numerically (not lexicographically); `NULL`s sort first ascending / last descending. The column may be named or given as a 1-based index into the displayed columns. There is no click-a-header sort — see "Known limitations". |
+| `:SqlSort <column\|index> [asc\|desc]` | Reorder the current result rows in place by one column, without re-querying. Numeric columns sort numerically (not lexicographically); `NULL`s sort first ascending / last descending. The column may be named or given as a 1-based index into the displayed columns. Complements click-a-header sort (which the engine handles) with decoded-value, NULL-aware, scriptable ordering — see "Known limitations". |
 | `:SqlNewConnection` | Open the connection dialog (a form, in a tab) to define and connect to a new database. |
 | `:SqlConnections` | Pick a saved connection from a fuzzy picker and connect to it. |
 
@@ -112,14 +112,25 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   non-editable; editing query results back into the database is explicitly
   out of scope for this extension (tracked as a separate, unfiled
   follow-on).
-- **There is no click-a-header sort.** Result columns **can** now be resized
-  by dragging a header divider (the `kind = "table"` view gained interactive
-  resize upstream in JDonaghy/vimcode#2018), but the header-*click*-to-sort
-  half of that work was deferred: the table view emits no header/column event,
-  so a click-to-sort UX is still not reachable from Lua. `:SqlSort` reorders
-  rows from a command instead. A plugin also can't declare default column
-  widths (the column spec is still `title` + `editable` only). Both the header
-  event and a declarable width are tracked upstream as JDonaghy/vimcode#2034.
+- **Header-click sort vs. `:SqlSort`.** Clicking a results-grid column header
+  now sorts the grid: the engine reorders the rows in a three-state cycle
+  (unsorted → ascending → descending), and it is numeric-aware (numeric cells
+  sort numerically). sql-tool handles the `HeaderClicked` event only to echo
+  what the click did on the status line — it does **not** re-sort the rows
+  itself (that would fight the engine's own ordering). Header-click sort and
+  declarable column widths both landed upstream in JDonaghy/vimcode#2034; the
+  grid also gained header-divider resize in JDonaghy/vimcode#2018. `:SqlSort`
+  stays because it sorts the **decoded** values rather than the painted cell
+  strings, so it can order a numeric column numerically *and* place `NULL`s
+  predictably (first ascending / last descending) — which the engine's
+  string-based overlay cannot — and because it is scriptable and keyboard-only.
+- **Result columns are floored at their header width, then size to content.**
+  Each column declares a `min_width` equal to its header text (JDonaghy/vimcode
+  #2034), so a column name is never squeezed to an unreadable sliver when a
+  result is wide; above that floor the column sizes to its content instead of
+  the old even split. (Units are character cells on the TUI, pixels on the GUI
+  backends.) On an engine predating that field the declaration is ignored and
+  the columns fall back to the even Flex split.
 - **Column headers are currently not drawn in the results grid.** A regression
   landed upstream (the results grid's `kind = "table"` view shows its data rows
   but no header row); the extension still supplies the column titles and
@@ -156,7 +167,7 @@ proves `manifest.toml` parses and matches `registry.json`; it never loads
 `sql_tool.lua`. `tests/sql_tool_spec.lua` in this directory is a genuine,
 runnable black-box test (mocking the `vimcode` table) that drives the real
 `sql_tool.lua` against the real `sqlite3` CLI; it is run during development
-with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 84
+with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 111
 checks. Two caveats keep it from being proof the extension works in VimCode:
 it is not wired into CI, and `luajit` is Lua 5.1, not the Lua 5.4/mlua sandbox
 VimCode embeds — so the manual smoke below (in a real build) remains the real

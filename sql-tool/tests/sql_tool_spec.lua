@@ -535,6 +535,31 @@ equals(body1.rows[1].cells[2], "x", "row 1 column b")
 equals(body1.rows[2].cells[1], "2", "row 2 column a")
 equals(body1.rows[2].cells[2], "y", "row 2 column b")
 
+-- #2034: each results column declares a `min_width` floored at its header
+-- width, so a column name can't be squeezed to an unreadable sliver.
+equals(body1.columns[1].min_width, #"a", "column 'a' declares min_width = its header width")
+equals(body1.columns[2].min_width, #"b", "column 'b' declares min_width = its header width")
+
+-- #2034: a header click is delivered to on_event. The engine itself reorders
+-- the painted rows (numeric-aware, 3-state); our handler only mirrors that
+-- cycle (unsorted -> asc -> desc -> unsorted) onto the status line, and must
+-- NOT reorder our own rows. Column 'a' is display index 0 (0-based `col`).
+ok(mock1.views.sql_tool_results.on_event ~= nil, "results view registers an on_event handler")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("sorted by a asc"), "first header click reports asc")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("sorted by a desc"), "second click on same header reports desc")
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 0 })
+ok(mock1.messages[#mock1.messages]:match("cleared sort on a"), "third click clears the sort")
+local after_click = mock1.views.sql_tool_results.render(nil)
+equals(after_click.rows[1].cells[1], "1",
+  "a header click does not reorder our own rows (the engine's overlay paints the order)")
+-- A non-header event, and an out-of-range column index, are both ignored.
+local msgs_pre_hdr = #mock1.messages
+mock1.views.sql_tool_results.on_event(nil, { kind = "ItemSelected", index = 0 })
+mock1.views.sql_tool_results.on_event(nil, { kind = "HeaderClicked", col = 99 })
+equals(#mock1.messages, msgs_pre_hdr, "a non-header event and an out-of-range header click are ignored")
+
 -- ---------------------------------------------------------------------------
 -- Session 1, continued: a failing query must surface an error and must not
 -- discard the ability to keep issuing commands (the "editor stays responsive"

@@ -53,6 +53,19 @@ local rows = {}
 -- The view only ever consumes `cells` (display strings), but :SqlSort needs the
 -- typed values so a numeric column sorts numerically, not lexicographically.
 local row_values = {}
+-- Header-click sort state, mirroring the engine's OWN built-in table sort
+-- cycle (unsorted -> asc -> desc -> unsorted) that landed in
+-- JDonaghy/vimcode#2034. Since that change, a click on a results-grid column
+-- header makes the *engine* reorder the painted rows (numeric-aware -- it
+-- parses numeric cells) and also dispatches a `HeaderClicked` event to our
+-- on_event. We deliberately do NOT re-sort `rows` ourselves on that event: the
+-- engine's overlay already reordered the paint, so a second, plugin-side sort
+-- would just fight it (see the on_event handler on RESULTS_VIEW below). We only
+-- track the cycle here so the status-line feedback matches what the engine
+-- painted. `:SqlSort` remains for scripted sorting and for exact typed/NULL
+-- ordering of `row_values`, which the engine's string-based overlay can't do.
+local header_sort_col = nil
+local header_sort_dir = nil
 local results_pane_opened = false
 local query_buffer_opened = false
 -- Sidebar object-panel refresh, defined in the "Database panel" block at the
@@ -378,6 +391,9 @@ local function run_query(sql)
           error_text = parsed_rows
         else
           columns, rows, row_values = cols, parsed_rows, parsed_values
+          -- New result set: the engine's own header-sort overlay restarts from
+          -- unsorted, so drop our mirror of it too.
+          header_sort_col, header_sort_dir = nil, nil
           status_text = "ok (" .. #rows .. " row(s))"
           error_text = nil
           if stderr ~= "" then
@@ -428,6 +444,7 @@ local function open_db(target)
   status_text = "connected -- no query run yet"
   error_text = nil
   columns, rows, row_values = {}, {}, {}
+  header_sort_col, header_sort_dir = nil, nil
   if not query_buffer_opened then
     -- `open_scratch` always creates a brand-new buffer and replaces
     -- the active window's buffer -- there is no "re-focus an existing
@@ -548,11 +565,13 @@ end
 
 -- :SqlSort <column|index> [asc|desc]   reorder the current result rows in
 -- place (no re-query) by one column, comparing the typed values kept in
--- `row_values`. There is deliberately no header-click sort: the `kind="table"`
--- plugin view emits no column/header event (only ItemSelected/ItemActivated/
--- CellEdited), so a click-to-sort UX is not reachable from Lua -- see
--- README.md's "Known limitations". A column may be named or given as a
--- 1-based index into the displayed (alphabetically sorted) columns.
+-- `row_values`. This is the typed/NULL-aware complement to the engine's
+-- built-in header-click sort (JDonaghy/vimcode#2034, handled in RESULTS_VIEW's
+-- on_event): clicking a header lets the engine reorder by the painted cell
+-- strings, while `:SqlSort` sorts by the decoded values, so a numeric column
+-- sorts numerically and NULLs order predictably (first asc / last desc). A
+-- column may be named or given as a 1-based index into the displayed
+-- (alphabetically sorted) columns.
 vimcode.command("SqlSort", function(args)
   args = (args or ""):match("^%s*(.-)%s*$")
   if args == "" then
@@ -651,13 +670,54 @@ vimcode.ui.register_view(RESULTS_VIEW, {
     end
     local view_columns = {}
     for i, name in ipairs(columns) do
-      view_columns[i] = { title = name, editable = false }
+      -- `min_width` (JDonaghy/vimcode#2034) floors each column at its header
+      -- width so the column name can't be squeezed to an unreadable sliver
+      -- when a result has many columns; above that floor the column sizes to
+      -- its content. Old engines without the field ignore it and fall back to
+      -- the previous even Flex split. (Units are character cells on the TUI,
+      -- pixels on the GUI backends -- #name is a sane floor in both: a readable
+      -- minimum on the TUI, negligible on the GUI where content drives width.)
+      view_columns[i] = { title = name, editable = false, min_width = #name }
     end
     return {
       kind = "table",
       columns = view_columns,
       rows = rows,
     }
+  end,
+
+  -- A click on a results-grid column header. Since JDonaghy/vimcode#2034 the
+  -- engine already reordered the painted rows itself (numeric-aware, and in a
+  -- 3-state unsorted->asc->desc cycle) BEFORE this fires, so we must NOT
+  -- reorder `rows`/`row_values` again -- doing so would layer a second,
+  -- conflicting sort on top. We only mirror the engine's cycle to report, on
+  -- the status line, what the click just did (there is no other feedback that
+  -- a header click registered). `:SqlSort` is still the way to get exact typed
+  -- / NULL-aware ordering, which the engine's string overlay doesn't offer.
+  on_event = function(_, event)
+    if event == nil or event.kind ~= "HeaderClicked" then
+      return
+    end
+    -- event.col is 0-based into the displayed columns; guard against a stale
+    -- index (a header click racing a just-changed result set).
+    local ci = (event.col or -1) + 1
+    if ci < 1 or ci > #columns then
+      return
+    end
+    if header_sort_col == ci and header_sort_dir == "asc" then
+      header_sort_dir = "desc"
+    elseif header_sort_col == ci and header_sort_dir == "desc" then
+      header_sort_col, header_sort_dir = nil, nil
+    else
+      header_sort_col, header_sort_dir = ci, "asc"
+    end
+    if header_sort_col == nil then
+      vimcode.message("sql-tool: cleared sort on " .. columns[ci])
+    else
+      vimcode.message(
+        "sql-tool: sorted by " .. columns[ci] .. " " .. header_sort_dir .. " (header click)"
+      )
+    end
   end,
 })
 
@@ -947,6 +1007,7 @@ local function connect_config(cfg)
   status_text = "connected -- no query run yet"
   error_text = nil
   columns, rows, row_values = {}, {}, {}
+  header_sort_col, header_sort_dir = nil, nil
   remember_connection(cfg)
   if not query_buffer_opened then
     -- Same once-per-session scratch buffer as open_db; see its comment.
