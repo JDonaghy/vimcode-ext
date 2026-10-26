@@ -64,6 +64,18 @@ is a candidate VimCode issue:
 - **L6 — no structured key/value widget.** Following from L1, headers/params can
   only be flat text or a separate table body — there is no inline repeatable
   key/value row inside a form.
+- **L7 — reverse field navigation is broken in the TUI.** `Tab` cycles forward
+  through fields, but `Shift-Tab` does not move back, so you can only walk the
+  form one way.
+- **L8 — no control over where output lands.** Sending opens the response in a
+  vertical split (an artefact of L2/L3). There is no way to route results into a
+  dedicated horizontal tab group / bottom result dock, or to reuse one output
+  surface across sends. A dockable, reusable result area is what this really
+  wants.
+- **Note — `dropdown` has no TUI popup.** A `dropdown` field in the terminal just
+  cycles options on `Enter` (no list). This client uses a `segmented` control for
+  Method instead so every option stays visible; a real searchable dropdown /
+  combobox field kind does not exist.
 
 Possible future work, pending a released binding: export/import collections to a
 file via `vimcode.fs.write` / `vimcode.fs.read`.
