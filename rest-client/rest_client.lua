@@ -336,7 +336,10 @@ vimcode.ui.register_view(REQUEST_VIEW, {
       fields = {
         { type = "text", id = "url", label = "URL", value = current.url,
           placeholder = "https://host/path or {{base}}/path" },
-        { type = "dropdown", id = "method", label = "Method",
+        -- A `segmented` control rather than a `dropdown`: in the TUI a dropdown
+        -- has no popup (Enter just cycles options), whereas a segmented control
+        -- shows every method inline with the selected one highlighted.
+        { type = "segmented", id = "method", label = "Method",
           options = METHODS, selected = method_index(current.method) },
         { type = "text_area", id = "headers", label = "Headers (Key: Value per line)",
           value = current.headers_text, rows = 3,
@@ -377,7 +380,7 @@ vimcode.ui.register_view(REQUEST_VIEW, {
       elseif wid == "body" then
         current.body = event.value or ""
       end
-    elseif kind == "DropdownChanged" and wid == "method" then
+    elseif (kind == "SegmentedChanged" or kind == "DropdownChanged") and wid == "method" then
       current.method = METHODS[(event.value or 0) + 1] or "GET"
       vimcode.ui.refresh(REQUEST_VIEW)
     elseif kind == "ButtonClicked" then
