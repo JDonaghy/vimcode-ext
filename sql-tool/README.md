@@ -43,6 +43,7 @@ saved connection from a picker.
 | `:SqlPickRecent` | Fuzzy-pick a previously opened database and switch to it. |
 | `:SqlRun` | Run the whole query buffer, or just lines `<start>,<end>` when given a hand-typed numeric range (e.g. `:SqlRun 3,7`). |
 | `:SqlSort <column\|index> [asc\|desc]` | Reorder the current result rows in place by one column, without re-querying. Numeric columns sort numerically (not lexicographically); `NULL`s sort first ascending / last descending. The column may be named or given as a 1-based index into the displayed columns. Complements click-a-header sort (which the engine handles) with decoded-value, NULL-aware, scriptable ordering — see "Known limitations". |
+| `:SqlCopyResults [csv\|tsv\|json\|md]` | Copy the whole current result set to the system clipboard in the given format (default `csv`; `markdown` and `tab` are accepted aliases). Formats the **decoded** values, so a `NULL` becomes an empty CSV/TSV field, JSON `null`, or an empty Markdown cell, and a numeric cell stays a JSON number. CSV quoting is RFC 4180. See "Copying results" and "Known limitations". |
 | `:SqlNewConnection` | Open the connection dialog (a form, in a tab) to define and connect to a new database. |
 | `:SqlConnections` | Pick a saved connection from a fuzzy picker and connect to it. |
 
@@ -88,6 +89,23 @@ There is no visual-mode binding: see "Known limitations" below.
   is killed or whose exit is never delivered can never wedge the extension
   into refusing every later command.
 
+## Copying results
+
+`:SqlCopyResults [csv|tsv|json|md]` copies the entire current result set to the
+system clipboard (the `+` register, which VimCode bridges to the OS clipboard),
+so you can paste it straight into a spreadsheet, a ticket, or a doc. The format
+defaults to `csv`; `tsv`, `json` and `md` (GitHub-flavored Markdown table) are
+the other choices, with `markdown`/`tab` accepted as aliases.
+
+It formats the **decoded** cell values, not the strings painted in the grid, so
+each format gets the right representation: a SQL `NULL` is an empty CSV/TSV
+field, JSON `null`, or an empty Markdown cell, and a numeric column stays a JSON
+number rather than a quoted string. CSV follows RFC 4180 (a field is quoted
+only when it contains a comma, a quote, or a newline; embedded quotes are
+doubled); TSV collapses any embedded tab/newline to a space; Markdown escapes
+`|`. Writing to a file (same formats) is a planned follow-on — see "Known
+limitations".
+
 ## Adapters
 
 Everything engine-specific lives behind a small **adapter** table in
@@ -124,6 +142,21 @@ own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
   strings, so it can order a numeric column numerically *and* place `NULL`s
   predictably (first ascending / last descending) — which the engine's
   string-based overlay cannot — and because it is scriptable and keyboard-only.
+- **`:SqlCopyResults` copies query / `:SqlSort` order, not header-click order.**
+  `:SqlSort` reorders the result set in place, so a copy reflects it; a
+  *header-click* sort only reorders the engine's painted overlay (sql-tool
+  deliberately doesn't re-sort its own rows on that event — see the header-sort
+  note above), so the copied bytes follow the query order, or the last
+  `:SqlSort`, not the clicked-header order. Use `:SqlSort` to copy in a specific
+  order.
+- **No copy of a single cell/row from a grid click, and no file export yet.**
+  `:SqlCopyResults` copies the *whole* set to the clipboard. Copying a single
+  clicked **cell** needs the clicked column reported in the table selection
+  event (filed as JDonaghy/vimcode#2041); writing the formatted output to a
+  **file** (a future `:SqlExport <path>`) needs a plugin file-write binding
+  (filed as JDonaghy/vimcode#2040, since the Lua sandbox has no `io`/`os`).
+  Until #2040 lands, the workaround is to `:SqlCopyResults` and paste into a new
+  buffer, then `:w` it.
 - **Result columns are floored at their header width, then size to content.**
   Each column declares a `min_width` equal to its header text (JDonaghy/vimcode
   #2034), so a column name is never squeezed to an unreadable sliver when a
@@ -167,7 +200,7 @@ proves `manifest.toml` parses and matches `registry.json`; it never loads
 `sql_tool.lua`. `tests/sql_tool_spec.lua` in this directory is a genuine,
 runnable black-box test (mocking the `vimcode` table) that drives the real
 `sql_tool.lua` against the real `sqlite3` CLI; it is run during development
-with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 111
+with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 136
 checks. Two caveats keep it from being proof the extension works in VimCode:
 it is not wired into CI, and `luajit` is Lua 5.1, not the Lua 5.4/mlua sandbox
 VimCode embeds — so the manual smoke below (in a real build) remains the real
