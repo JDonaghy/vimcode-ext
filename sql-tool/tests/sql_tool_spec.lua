@@ -326,6 +326,13 @@ local function make_mock(storage_backing)
       end,
     },
 
+    -- Test seam (see sql_tool.lua's EOF): captures the extension's internal
+    -- adapters/helpers so the offline Postgres-adapter checks can unit-test
+    -- argv/parse/env/target logic without a live psql/server.
+    __expose_internals = function(internals)
+      mock.internals = internals
+    end,
+
     state = {
       set_register = function(reg, text, linewise)
         mock.registers[reg] = text
@@ -963,6 +970,95 @@ mock8.pending_spawns[2]() -- query 2's exit: rows
 local g8 = mock8.views.sql_tool_results.render(nil)
 equals(g8.kind, "table", "a good query after an error shows a table, not nothing")
 equals(#g8.rows, 2, "the good query shows its rows")
+
+-- ---------------------------------------------------------------------------
+-- Postgres adapter (offline). The engine is server-based and this spec has no
+-- psql/server, so these unit-test the adapter's PURE argv / parse / env /
+-- target logic via the test seam (vimcode.__expose_internals) and never spawn
+-- psql. A live end-to-end smoke against a real Postgres is the README's manual
+-- step.
+-- ---------------------------------------------------------------------------
+
+do
+  local mpg = make_mock({})
+  load_extension(mpg)
+  local pg = mpg.internals and mpg.internals.adapters and mpg.internals.adapters.postgres
+  ok(pg ~= nil, "postgres adapter registered under kind 'postgres'")
+  equals(pg.binary, "psql", "postgres adapter drives psql")
+
+  local in_list = false
+  for _, a in ipairs(mpg.internals.adapter_list) do
+    if a.kind == "postgres" then in_list = true end
+  end
+  ok(in_list, "postgres appears in the engine dropdown list")
+
+  -- open(): requires a database, builds a user@host:port/db label.
+  local bad, err = pg.open({ database = "", host = "h" })
+  ok(bad == nil and err:find("database", 1, true) ~= nil, "open refuses a missing database name")
+  local conn = pg.open({ host = "db.example", port = "5433", user = "alice", database = "shop", password = "s3cret" })
+  ok(conn ~= nil, "open accepts a full target")
+  equals(pg.label(conn), "alice@db.example:5433/shop", "label is user@host:port/db")
+
+  -- env(): PGPASSWORD only when a password is present (never persisted).
+  equals(pg.env(conn).PGPASSWORD, "s3cret", "env exposes PGPASSWORD from the in-memory password")
+  equals(pg.env(pg.open({ database = "shop" })), nil, "env is nil when there is no password")
+
+  -- query_args(): -h/-p/-U/-d flags + -tA -w + a json_agg-wrapped single query;
+  -- a trailing ';' is stripped so the query nests as a subquery.
+  local args = pg.query_args(conn, "SELECT 1;")
+  local argstr = table.concat(args, " ")
+  ok(argstr:find("-h db.example", 1, true) and argstr:find("-p 5433", 1, true)
+    and argstr:find("-U alice", 1, true) and argstr:find("-d shop", 1, true),
+    "query_args carries -h/-p/-U/-d connection flags")
+  ok(argstr:find("-A", 1, true) and argstr:find("-t", 1, true) and argstr:find("-w", 1, true),
+    "query_args runs psql unaligned / tuples-only / no-password-prompt")
+  local wrapped = args[#args]
+  ok(wrapped:find("json_agg(row_to_json(_q))", 1, true), "query wraps the user SQL in json_agg")
+  ok(wrapped:find("SELECT 1\n) _q;", 1, true), "query strips the trailing ';' before nesting")
+
+  -- a conninfo/URI target (from :SqlOpen) passes straight to psql -d.
+  local uriconn = pg.open("postgresql://localhost/shop")
+  equals(table.concat(pg.query_args(uriconn, "SELECT 1"), " "):match("%-d (%S+)"),
+    "postgresql://localhost/shop", "a conninfo/URI target passes straight to psql -d")
+
+  -- parse(): JSON array of objects -> columns/rows/typed values (reuses the
+  -- sqlite JSON path); a JSON null stays the json.null sentinel / empty cell.
+  local cols, prows, pvals = pg.parse('[{"a":1,"b":"x"},{"a":2,"b":null}]')
+  equals(#cols, 2, "parse infers two columns")
+  equals(cols[1], "a", "parse sorts columns: a first")
+  equals(prows[1].cells[1], "1", "parse renders row 1 col a")
+  equals(prows[2].cells[2], "", "a JSON null renders as an empty cell")
+  equals(pvals[2][2], mpg.vimcode.json.null, "the decoded NULL is kept as the json.null sentinel")
+  equals(#(pg.parse("[]")), 0, "parse of [] yields zero columns")
+
+  -- catalog / columns / top-N dialect.
+  ok(table.concat(pg.objects_args(conn), " "):find("information_schema.tables", 1, true),
+    "objects_args queries information_schema.tables")
+  local objs = pg.parse_objects('[{"name":"orders","type":"table"},{"name":"v_sales","type":"view"}]')
+  equals(objs[2].type, "view", "parse_objects normalizes the view type")
+  ok(table.concat(pg.columns_args(conn, "orders"), " "):find("information_schema.columns", 1, true),
+    "columns_args queries information_schema.columns")
+  local pcols = pg.parse_columns('[{"name":"id","type":"integer"},{"name":"total","type":"numeric"}]')
+  equals(pcols[1].name, "id", "parse_columns keeps column order")
+  equals(pcols[1].pk, false, "parse_columns leaves pk false (pg pk detection deferred)")
+  local topn = pg.top_n_sql("orders", 1000)
+  ok(topn:find('"orders"', 1, true) and topn:find("LIMIT 1000", 1, true),
+    "top_n_sql quotes the identifier and uses LIMIT")
+
+  -- make_target round-trips dialog field values into the in-memory conn.
+  local tgt = pg.make_target({ host = "h", port = "5", database = "d", user = "u", password = "p" })
+  equals(tgt.database, "d", "make_target carries the database")
+  equals(tgt.password, "p", "make_target carries the password (for the in-memory conn only)")
+
+  -- strip_secrets drops the password-typed field before persisting.
+  local saved = mpg.internals.strip_secrets({
+    name = "prod", engine = "postgres",
+    values = { host = "h", database = "d", user = "u", password = "s3cret" },
+  })
+  equals(saved.values.password, nil, "strip_secrets drops a postgres password before persisting")
+  equals(saved.values.host, "h", "strip_secrets keeps the non-secret fields")
+  equals(saved.values.database, "d", "strip_secrets keeps the database")
+end
 
 -- ---------------------------------------------------------------------------
 

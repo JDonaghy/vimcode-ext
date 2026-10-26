@@ -306,14 +306,240 @@ local sqlite_adapter = {
   end,
 }
 
-local adapters = { [sqlite_adapter.kind] = sqlite_adapter }
--- Ordered list (the map above has no order) for the engine dropdown in the
--- connection dialog. SQLite is the only entry today.
-local adapter_list = { sqlite_adapter }
+-- ---------------------------------------------------------------------------
+-- Postgres adapter (requires the `psql` CLI).
+--
+-- psql has no `-json` result mode like sqlite3, so every query is wrapped in
+-- `SELECT json_agg(row_to_json(_q)) FROM ( <sql> ) _q` and run with `-tA`
+-- (tuples-only, unaligned) so stdout is exactly a JSON array of objects -- the
+-- same shape sqlite3 -json produces, so `rows_from_json` and the typed-value
+-- machinery are reused unchanged. Consequence: a run must be a SINGLE SELECT
+-- (or any statement usable as a subquery). Multiple statements, a trailing
+-- extra `;`, or DML/DDL (INSERT/UPDATE/CREATE) can't be wrapped and surface as
+-- a psql syntax error -- see the README's "Known limitations".
+--
+-- Auth: there is no secrets store (vimcode.storage is plaintext), so a password
+-- is NEVER persisted (strip_secrets drops it). A password typed in the dialog
+-- lives only in the in-memory conn and is handed to psql for that child only
+-- via the PGPASSWORD env (adapter.env, threaded into every spawn). A saved
+-- connection reconnects with no password, so it must rely on libpq's own
+-- mechanisms (`~/.pgpass`, `PGPASSWORD`, `PGSERVICE`) or trust/peer auth. `-w`
+-- is always passed so psql fails fast instead of blocking on a password prompt
+-- it can never receive (the child has no TTY).
+-- ---------------------------------------------------------------------------
 
--- SQLite is the only adapter today, so it is the default. The connection
+-- Connection flags (after `psql`) for a conn: either a raw libpq conninfo/URI
+-- (from :SqlOpen) or the structured host/port/user/database from the dialog.
+local function pg_conn_flags(conn)
+  if conn.conninfo then
+    return { "-d", conn.conninfo }
+  end
+  local flags = {}
+  local function push(flag, value)
+    if value ~= nil and value ~= "" then
+      flags[#flags + 1] = flag
+      flags[#flags + 1] = value
+    end
+  end
+  push("-h", conn.host)
+  push("-p", conn.port)
+  push("-U", conn.user)
+  -- `database` is required by open(), so it is always present here.
+  flags[#flags + 1] = "-d"
+  flags[#flags + 1] = conn.database
+  return flags
+end
+
+-- Full argv (after `psql`) that runs `inner_sql` as a subquery and prints its
+-- rows as a single JSON array of objects on stdout. `coalesce(..., '[]')` makes
+-- a zero-row result print "[]" (no rows => json_agg is NULL), so parse() sees
+-- the same empty-array shape sqlite3 -json emits.
+local function pg_json_cmd(conn, inner_sql)
+  local wrapped = "SELECT coalesce(json_agg(row_to_json(_q)), '[]'::json) FROM (\n"
+    .. inner_sql .. "\n) _q;"
+  local args = pg_conn_flags(conn)
+  for _, f in ipairs({ "-X", "-A", "-t", "-w", "-c", wrapped }) do
+    args[#args + 1] = f
+  end
+  return args
+end
+
+local function pg_parse_json(stdout, what)
+  local ok, decoded = pcall(vimcode.json.decode, stdout == "" and "[]" or stdout)
+  if not ok then
+    return nil, "could not parse psql " .. what .. " output as JSON: " .. tostring(decoded)
+  end
+  return decoded
+end
+
+local postgres_adapter = {
+  kind = "postgres",
+  display = "PostgreSQL",
+  binary = "psql",
+
+  -- Server-based: there is no cheap synchronous probe (a real connection test
+  -- is a network round trip, which open() can't block on), so open() only
+  -- validates the target shape. A bad host/credential surfaces on the first
+  -- query as psql's own error, the same way a wrong SQLite path used to.
+  open = function(target)
+    if type(target) == "string" then
+      local s = target:match("^%s*(.-)%s*$")
+      if s == "" then
+        return nil, "empty connection string"
+      end
+      return { conninfo = s, display = s }, nil
+    end
+    target = target or {}
+    if not target.database or target.database == "" then
+      return nil, "a database name is required"
+    end
+    local host = (target.host ~= "" and target.host) or "localhost"
+    local display = (target.user and target.user ~= "" and (target.user .. "@") or "")
+      .. host
+      .. (target.port and target.port ~= "" and (":" .. target.port) or "")
+      .. "/"
+      .. target.database
+    return {
+      host = target.host,
+      port = target.port,
+      user = target.user,
+      database = target.database,
+      password = target.password, -- in-memory only; never persisted
+      display = display,
+    }, nil
+  end,
+
+  label = function(conn)
+    return conn.display
+  end,
+
+  -- Per-child env so psql can authenticate without the password ever touching
+  -- storage. nil (no env override) when there is no in-memory password.
+  env = function(conn)
+    if conn.password and conn.password ~= "" then
+      return { PGPASSWORD = conn.password }
+    end
+    return nil
+  end,
+
+  query_args = function(conn, sql)
+    -- Trim trailing whitespace and one trailing `;` so the query nests as a
+    -- subquery; the seeded leading `-- <label>` comment is fine inside it (the
+    -- newline after it ends the comment).
+    local inner = (sql:gsub("%s*;?%s*$", ""))
+    return pg_json_cmd(conn, inner)
+  end,
+
+  parse = function(stdout)
+    local decoded, err = pg_parse_json(stdout, "query")
+    if decoded == nil then
+      return nil, err
+    end
+    return rows_from_json(decoded)
+  end,
+
+  objects_args = function(conn)
+    return pg_json_cmd(conn,
+      "SELECT table_name AS name, "
+      .. "CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END AS type "
+      .. "FROM information_schema.tables "
+      .. "WHERE table_schema NOT IN ('pg_catalog', 'information_schema') "
+      .. "ORDER BY type, name")
+  end,
+
+  parse_objects = function(stdout)
+    local decoded, err = pg_parse_json(stdout, "catalog")
+    if decoded == nil then
+      return nil, err
+    end
+    local objs = {}
+    if type(decoded) == "table" then
+      for _, row in ipairs(decoded) do
+        if type(row) == "table" and type(row.name) == "string" then
+          objs[#objs + 1] = { name = row.name, type = row.type }
+        end
+      end
+    end
+    return objs
+  end,
+
+  -- Double-quoted identifier + LIMIT, same dialect as SQLite. The catalog
+  -- lists unqualified table names, so this resolves against the search_path
+  -- (public by default); a table in another schema needs a qualified query.
+  top_n_sql = function(name, n)
+    return 'SELECT * FROM "' .. name:gsub('"', '""') .. '" LIMIT ' .. n .. ";"
+  end,
+
+  columns_args = function(conn, table_name)
+    return pg_json_cmd(conn,
+      "SELECT column_name AS name, data_type AS type "
+      .. "FROM information_schema.columns "
+      .. "WHERE table_name = '" .. table_name:gsub("'", "''") .. "' "
+      .. "ORDER BY ordinal_position")
+  end,
+
+  -- {name=, type=, pk=} per column, in definition order. Primary-key detection
+  -- needs a pg_constraint join and is deferred; pk is always false for now.
+  parse_columns = function(stdout)
+    local decoded, err = pg_parse_json(stdout, "columns")
+    if decoded == nil then
+      return nil, err
+    end
+    local cols = {}
+    if type(decoded) == "table" then
+      for _, row in ipairs(decoded) do
+        if type(row) == "table" and type(row.name) == "string" then
+          cols[#cols + 1] = {
+            name = row.name,
+            type = (type(row.type) == "string" and row.type ~= "") and row.type or nil,
+            pk = false,
+          }
+        end
+      end
+    end
+    return cols
+  end,
+
+  conn_fields = {
+    { id = "host", label = "Host", type = "text", placeholder = "localhost" },
+    { id = "port", label = "Port", type = "text", placeholder = "5432" },
+    { id = "database", label = "Database", type = "text", placeholder = "postgres" },
+    { id = "user", label = "User", type = "text", placeholder = "postgres" },
+    { id = "password", label = "Password", type = "password", placeholder = "(or ~/.pgpass)" },
+  },
+
+  make_target = function(values)
+    return {
+      host = values.host,
+      port = values.port,
+      database = values.database,
+      user = values.user,
+      password = values.password,
+    }
+  end,
+}
+
+local adapters = {
+  [sqlite_adapter.kind] = sqlite_adapter,
+  [postgres_adapter.kind] = postgres_adapter,
+}
+-- Ordered list (the map above has no order) for the engine dropdown in the
+-- connection dialog.
+local adapter_list = { sqlite_adapter, postgres_adapter }
+
+-- SQLite is the default engine (file-based, no server needed). The connection
 -- dialog's engine dropdown sets current_adapter per connection.
 current_adapter = sqlite_adapter
+
+-- Per-spawn env override from the active adapter (e.g. Postgres' PGPASSWORD),
+-- or nil. Threaded into every vimcode.loop.spawn opts below so a server engine
+-- can authenticate without the credential ever being persisted.
+local function spawn_env(adapter, conn)
+  if adapter and adapter.env and conn then
+    return adapter.env(conn)
+  end
+  return nil
+end
 
 -- Open the results view once, the first time a query runs, as its own editor
 -- tab. Reused across runs via the guard below (open_view always opens a NEW
@@ -360,6 +586,7 @@ local function run_query(sql)
   local adapter = current_adapter
   local out_chunks, err_chunks = {}, {}
   local ok_spawn, err = pcall(vimcode.loop.spawn, adapter.binary, adapter.query_args(current_conn, sql), {
+    env = spawn_env(adapter, current_conn),
     on_stdout = function(chunk)
       out_chunks[#out_chunks + 1] = chunk
     end,
@@ -1104,6 +1331,7 @@ function refresh_objects()
   local conn = current_conn
   local out_chunks = {}
   local ok_spawn = pcall(vimcode.loop.spawn, adapter.binary, adapter.objects_args(conn), {
+    env = spawn_env(adapter, conn),
     on_stdout = function(chunk)
       out_chunks[#out_chunks + 1] = chunk
     end,
@@ -1142,6 +1370,7 @@ local function expand_table(name)
   local adapter = current_adapter
   local out_chunks = {}
   local ok_spawn = pcall(vimcode.loop.spawn, adapter.binary, adapter.columns_args(current_conn, name), {
+    env = spawn_env(adapter, current_conn),
     on_stdout = function(chunk)
       out_chunks[#out_chunks + 1] = chunk
     end,
@@ -1455,7 +1684,7 @@ vimcode.ui.register_view(CONN_DIALOG, {
     elseif kind == "ButtonClicked" and wid == "connect" then
       local name = conn_form.name
       if name == "" then
-        name = conn_form.values.path or conn_form.engine
+        name = conn_form.values.path or conn_form.values.database or conn_form.engine
       end
       local connected = connect_config({
         name = name,
@@ -1477,3 +1706,16 @@ end)
 vimcode.command("SqlConnections", function(_)
   connect_picker()
 end)
+
+-- Test seam: the black-box spec (tests/sql_tool_spec.lua) loads this file in a
+-- sandbox whose `vimcode` mock sets `__expose_internals`, letting it unit-test
+-- the engine adapters (argv building, parse, env, make_target) offline without
+-- a live server. A real VimCode build's `vimcode` table has no such field, so
+-- this is inert in production.
+if vimcode.__expose_internals then
+  vimcode.__expose_internals({
+    adapters = adapters,
+    adapter_list = adapter_list,
+    strip_secrets = strip_secrets,
+  })
+end
