@@ -22,6 +22,7 @@ VimCode fetches `registry.json` from this repo on startup and caches it locally.
 | `markdown` | Markdown Language Support | marksman | — |
 | `php` | PHP Language Support | intelephense | — |
 | `python` | Python Language Support | pyright | debugpy |
+| `rest-client` | HTTP request builder (REST client) | — | — |
 | `ruby` | Ruby Language Support | ruby-lsp | — |
 | `rust` | Rust Language Support | rust-analyzer | codelldb |
 | `sql-tool` | SQLite-backed query runner with an async results grid | — | — |

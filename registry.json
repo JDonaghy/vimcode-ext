@@ -386,6 +386,29 @@
     "workspace_markers": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"]
   },
   {
+    "name": "rest-client",
+    "display_name": "REST Client",
+    "description": "Mini Postman-style HTTP request builder with a response buffer",
+    "version": "0.2.0",
+    "file_extensions": [],
+    "language_ids": [],
+    "lsp": {
+      "binary": "",
+      "install": "",
+      "fallback_binaries": [],
+      "args": []
+    },
+    "dap": {
+      "adapter": "",
+      "binary": "",
+      "install": "",
+      "transport": "",
+      "args": []
+    },
+    "scripts": ["rest_client.lua"],
+    "workspace_markers": []
+  },
+  {
     "name": "ruby",
     "display_name": "Ruby Language Support",
     "description": "LSP for Ruby",
