@@ -4,9 +4,10 @@ SQLite-backed query runner with an async results grid. Open a `.db` file, write
 SQL in a normal editor buffer (full vim motions, undo, syntax highlighting),
 run it, and see the rows in a results tab.
 
-**Requires**: the `sqlite3` CLI on PATH. Every query runs it with `-json`
-through `vimcode.loop.spawn` — a real child process, never a blocking shell
-call — so the editor never freezes while a query is in flight.
+**Requires**: a CLI for the engine you connect to, on PATH — `sqlite3` for
+SQLite (default), or `psql` for PostgreSQL. Every query runs the CLI through
+`vimcode.loop.spawn` — a real child process, never a blocking shell call — so
+the editor never freezes while a query is in flight.
 
 ## Database panel
 
@@ -113,19 +114,50 @@ Everything engine-specific lives behind a small **adapter** table in
 database-agnostic. An adapter provides: the CLI `binary`; `open(target)` to
 validate a connection; `query_args`/`parse` to run a query and shape its
 output; and `objects_args`/`parse_objects`/`top_n_sql` for the panel's catalog
-and "select top N" dialect. **SQLite is the only adapter today** (it needs the
-`sqlite3` CLI). Adding Postgres (`psql`) or MySQL (`mysql`) is a new adapter
-entry plus its install command — no changes to the UI code. Note there is no
-secrets store in VimCode yet (`vimcode.storage` is plaintext), so a server
-adapter should prompt for the password at connect time or defer to the engine's
-own credential files (`~/.pgpass`, `~/.my.cnf`, `PGSERVICE`), not persist it.
+and "select top N" dialect (a server engine also provides `conn_fields` for the
+dialog, `make_target`, and an optional `env(conn)` for per-child credentials).
+**Two adapters ship today: SQLite (`sqlite3`, the default) and PostgreSQL
+(`psql`).** Adding MySQL (`mysql`) or SQL Server (`sqlcmd`) is a new adapter
+entry — no changes to the UI code.
+
+Note there is no secrets store in VimCode yet (`vimcode.storage` is plaintext),
+so a password is **never persisted**: a password-typed dialog field is stripped
+before a connection is saved. A password typed in the dialog is used for that
+session only — it is handed to the CLI for each child process via an environment
+variable (`PGPASSWORD` for Postgres) and never written to disk. A *saved*
+connection reconnects without a password, so it must rely on the engine's own
+credential mechanisms (`~/.pgpass`, `PGSERVICE`, or `PGPASSWORD` in your
+environment for Postgres; `~/.my.cnf` for MySQL).
+
+### PostgreSQL
+
+Connect via the connection dialog (`:SqlNewConnection`): choose **PostgreSQL**
+in the Engine dropdown and fill in host / port / database / user / password.
+`psql` has no JSON result mode, so each query is wrapped in
+`SELECT json_agg(row_to_json(_q)) FROM ( <your sql> ) _q` and run with `-tA`, so
+its stdout is the same JSON-array shape the SQLite path produces and the grid,
+sorting and `:SqlCopyResults` all work unchanged. The consequence is that a run
+must be a **single statement usable as a subquery** — see "Known limitations".
+`:SqlOpen` also accepts a libpq connection string / URI (e.g.
+`:SqlOpen postgresql://user@host/db`) when PostgreSQL is the current engine.
 
 ## Known limitations
 
+- **PostgreSQL runs one statement at a time, and it must be a sub-query-able
+  `SELECT`.** Because each query is wrapped in `json_agg(...) FROM ( <sql> )`,
+  the Postgres path runs a **single** statement that is valid as a subquery.
+  Multiple statements separated by `;`, or a non-`SELECT` (INSERT/UPDATE/DDL),
+  can't be wrapped and come back as a `psql` syntax error. A single trailing
+  `;` is stripped for you. (SQLite has no such restriction.) Also, for Postgres:
+  the object panel lists unqualified names resolved against the `search_path`
+  (so non-`public` schemas may not expand), and primary-key markers aren't
+  detected yet (every column shows as non-key). These are first-adapter
+  simplifications, not fundamental limits.
 - **Empty result sets show no columns.** `sqlite3 -json` prints `[]` for a
   zero-row result, which carries no column names. A `SELECT` that matches no
   rows shows an empty table with no headers rather than "0 of N columns" —
   a consequence of driving `sqlite3 -json` instead of `PRAGMA table_info`.
+  (The Postgres path has the same shape: a zero-row result is `[]`.)
 - **Results are read-only.** The table view's columns are declared
   non-editable; editing query results back into the database is explicitly
   out of scope for this extension (tracked as a separate, unfiled
@@ -200,7 +232,7 @@ proves `manifest.toml` parses and matches `registry.json`; it never loads
 `sql_tool.lua`. `tests/sql_tool_spec.lua` in this directory is a genuine,
 runnable black-box test (mocking the `vimcode` table) that drives the real
 `sql_tool.lua` against the real `sqlite3` CLI; it is run during development
-with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 136
+with `luajit` (or `lua5.4`) + `sqlite3` on PATH and currently passes 166
 checks. Two caveats keep it from being proof the extension works in VimCode:
 it is not wired into CI, and `luajit` is Lua 5.1, not the Lua 5.4/mlua sandbox
 VimCode embeds — so the manual smoke below (in a real build) remains the real
@@ -233,3 +265,18 @@ To verify by hand in a real VimCode build:
    Then run `:SqlPickRecent` — expect both paths in the picker, most recent
    first. Restart VimCode and run `:SqlPickRecent` again — expect the same
    two entries to still be there.
+
+To verify the **PostgreSQL** adapter (needs `psql` on PATH and a reachable
+server — e.g. a local `postgres`):
+
+7. `:SqlNewConnection` → in the dialog pick **PostgreSQL** in the Engine
+   dropdown, enter host/port/database/user (and a password, or leave it blank to
+   use `~/.pgpass`), click **Connect**. Expect a "connected to
+   user@host:port/db" message, the Tables/Views panel to populate, and a `.sql`
+   query buffer. Type `SELECT 1 AS n;` and `<leader>r` — expect a one-row, one-
+   column grid. `:SqlCopyResults csv` should copy `n\n1`. Expand a table in the
+   panel to see its columns. Confirm the saved connection (via
+   `:SqlConnections`) reconnects — and that it did **not** persist the password
+   (reconnect relies on `~/.pgpass`/`PGPASSWORD`). A multi-statement run or a
+   non-`SELECT` should report a `psql` error (expected — see "Known
+   limitations").
