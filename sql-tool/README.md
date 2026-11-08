@@ -30,10 +30,15 @@ column query and `SELECT TOP N` dialect (see "Adapters" below).
 **New connection** (the `n` action, or `:SqlNewConnection`) opens a connection
 **dialog** — a form with a name, an engine dropdown, the engine's connection
 fields (for SQLite, a file path; a server engine would add host/port/user and a
-masked password) and a **Connect** button. It opens as an editor tab. On
-connect it opens the database and saves the connection (minus any password —
-see "Adapters") to the Connection section. `:SqlConnections` reconnects to a
-saved connection from a picker.
+masked password) and a **Connect** / **Cancel** button row. It opens as an
+editor tab. On connect it opens the database and saves the connection (minus
+any password — see "Adapters") to the Connection section; Cancel clears the
+form and closes the tab. `:SqlConnections` reconnects to a saved connection
+from a picker.
+
+The commands that take no argument are also in the command palette under
+**SQL:** — *New Connection...*, *Connect to Saved Connection...*, *Run Query*,
+*Open Recent Database...* and *Copy Results to Clipboard (CSV)*.
 
 ## Commands
 

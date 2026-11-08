@@ -491,7 +491,7 @@ vimcode.command("SqlPickRecent", function(_)
       open_db(path)
     end,
   })
-end)
+end, { title = "Open Recent Database...", category = "SQL" })
 
 -- `:SqlRun <start>,<end>` (a hand-typed numeric range) runs just those
 -- lines. Vim-native visual-range syntax (`:'<,'>SqlRun`) can never reach
@@ -524,7 +524,7 @@ vimcode.command("SqlRun", function(args)
     sql = table.concat(vimcode.buf.lines(), "")
   end
   run_query(sql)
-end)
+end, { title = "Run Query", category = "SQL" })
 
 -- Type rank for cross-type ordering. `sqlite3 -json` can return a mix of
 -- numbers, strings, booleans and nulls in one column (dynamic typing), so a
@@ -815,7 +815,7 @@ vimcode.command("SqlCopyResults", function(args)
   vimcode.state.set_register("+", spec.fn(columns, row_values), false)
   vimcode.message(string.format(
     "sql-tool: copied %d rows x %d cols as %s to clipboard", #rows, #columns, spec.label))
-end)
+end, { title = "Copy Results to Clipboard (CSV)", category = "SQL" })
 
 vimcode.keymap.set("n", "<leader>r", function()
   vimcode.command_run("SqlRun")
@@ -1379,8 +1379,9 @@ end)
 --
 -- A form: a name, an engine dropdown, the selected engine's connection fields
 -- (SQLite: a file path; a server engine would add host/port/user and a masked
--- `password` field), and a Connect button. On connect it opens the connection
--- and saves it (minus any password) to the panel's saved-connection list.
+-- `password` field), and a Connect / Cancel button row. On connect it opens
+-- the connection and saves it (minus any password) to the panel's
+-- saved-connection list. Cancel clears the form and closes the dialog's tab.
 --
 -- Registered `sidebar = false` (vimcode#2032) so it has no activity-bar icon
 -- of its own -- it is only ever opened as a tab via open_conn_dialog().
@@ -1427,7 +1428,11 @@ vimcode.ui.register_view(CONN_DIALOG, {
         placeholder = f.placeholder,
       }
     end
-    fields[#fields + 1] = { type = "button", id = "connect", label = "Connect" }
+    -- Connect first: Enter on a button row activates its first enabled button.
+    fields[#fields + 1] = { type = "buttons", id = "actions", buttons = {
+      { id = "connect", label = "Connect", variant = "primary" },
+      { id = "cancel", label = "Cancel", variant = "secondary" },
+    } }
     if conn_form.status ~= "" then
       fields[#fields + 1] = { type = "read_only", id = "status", label = "Status",
         value = conn_form.status }
@@ -1466,14 +1471,20 @@ vimcode.ui.register_view(CONN_DIALOG, {
           and ("connected to " .. current_adapter.label(current_conn))
         or "connection failed"
       vimcode.ui.refresh(CONN_DIALOG)
+    elseif kind == "ButtonClicked" and wid == "cancel" then
+      conn_form = { engine = adapter_list[1].kind, name = "", values = {}, status = "" }
+      vimcode.ui.refresh(CONN_DIALOG)
+      -- No vimcode.ui.close_view yet, so close the dialog as an ex command.
+      -- The click came from this view, so its tab is the active one.
+      vimcode.command_run("tabclose")
     end
   end,
 })
 
 vimcode.command("SqlNewConnection", function(_)
   open_conn_dialog()
-end)
+end, { title = "New Connection...", category = "SQL" })
 
 vimcode.command("SqlConnections", function(_)
   connect_picker()
-end)
+end, { title = "Connect to Saved Connection...", category = "SQL" })

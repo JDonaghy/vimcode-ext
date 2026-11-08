@@ -847,16 +847,22 @@ ok(mock6.commands.SqlNewConnection ~= nil, "SqlNewConnection command registered"
 ok(mock6.commands.SqlConnections ~= nil, "SqlConnections command registered")
 
 -- The dialog renders a field stack with a name, an engine dropdown, the
--- SQLite path field, and a Connect button.
+-- SQLite path field, and a Connect / Cancel button row (Connect first, so
+-- Enter on the row connects).
 local form = dialog.render(nil)
 ok(form.fields ~= nil, "dialog renders a field stack")
-local has_path, has_connect = false, false
+local has_path, action_ids = false, nil
 for _, f in ipairs(form.fields) do
   if f.id == "f:path" then has_path = true end
-  if f.id == "connect" and f.type == "button" then has_connect = true end
+  if f.type == "buttons" and f.id == "actions" then
+    action_ids = {}
+    for i, b in ipairs(f.buttons) do action_ids[i] = b.id end
+  end
 end
 ok(has_path, "dialog shows the SQLite 'path' field")
-ok(has_connect, "dialog has a Connect button")
+ok(action_ids ~= nil, "dialog has an action button row")
+equals(action_ids and table.concat(action_ids, ","), "connect,cancel",
+  "the action row is Connect then Cancel")
 
 -- Fill in the form and click Connect.
 dialog.on_event(nil, { kind = "TextChanged", widget_id = "name", value = "myfix" })
@@ -870,6 +876,18 @@ ok(dlg_tables and #dlg_tables == 1 and dlg_tables[1].text == "t",
 equals(storage6.connections and #storage6.connections, 1, "the connection was persisted")
 equals(storage6.connections[1].name, "myfix", "the saved connection kept its name")
 equals(storage6.connections[1].values.path, fixture_path, "the saved connection kept its path")
+
+-- Cancel clears the form and closes the dialog's tab (via an ex command,
+-- as there is no vimcode.ui.close_view).
+dialog.on_event(nil, { kind = "TextChanged", widget_id = "name", value = "scratch" })
+dialog.on_event(nil, { kind = "ButtonClicked", widget_id = "cancel" })
+equals(mock6.command_run_calls[#mock6.command_run_calls], "tabclose", "Cancel closes the dialog tab")
+local cancelled_name
+for _, f in ipairs(dialog.render(nil).fields) do
+  if f.id == "name" then cancelled_name = f.value end
+end
+equals(cancelled_name, "", "Cancel clears the typed name")
+equals(#storage6.connections, 1, "Cancel saves no connection")
 local conn_section = mock6.panel_items["sql_tool"]["Connection"]
 ok(#conn_section >= 2, "the saved connection appears below the toolbar row")
 equals(conn_section[2].text, "myfix", "the saved connection row shows its name")
